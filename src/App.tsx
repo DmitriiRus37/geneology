@@ -11,7 +11,7 @@ import { AppCtx } from "./ui/ctx.ts";
 import { Sidebar } from "./ui/Sidebar.tsx";
 
 export type Where =
-  | { kind: "disk"; dir: string; store: Store; blocked: null | "conflict" | "stale" }
+  | { kind: "disk"; dir: string; store: Store; guarded: boolean; role: string; blocked: null | "conflict" | "stale" }
   | { kind: "browser" }
   | null;
 
@@ -54,7 +54,14 @@ export function App() {
         setWhere({ kind: "browser" });
         return;
       }
-      setWhere({ kind: "disk", dir: info.dir, store: info.store, blocked: info.stale ? "stale" : null });
+      setWhere({
+        kind: "disk",
+        dir: info.dir,
+        store: info.store,
+        guarded: info.guarded,
+        role: info.role,
+        blocked: info.stale ? "stale" : null,
+      });
       if (info.tree && Object.keys(info.tree.people).length) {
         d({ type: "load", tree: normalize(info.tree), silent: true });
       } else if (info.store === "memory") {

@@ -19,6 +19,11 @@
  * The password lives in GENEALOGY_USER and GENEALOGY_PASS. While they are empty
  * the server is open: on your own machine a password is pointless. On someone
  * else's it is mandatory — anyone who reaches the port can rewrite the tree.
+ *
+ * GENEALOGY_ADMIN_USER and GENEALOGY_ADMIN_PASS add a second account, the only
+ * one that may open /admin and read who has been signing in. Without them the
+ * page exists for nobody. The administrator lands on it straight after signing
+ * in, and can still open the tree.
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
@@ -75,10 +80,11 @@ function roleOfCreds(name, pass) {
 }
 
 /**
- * A ticket handed out by the login form, good until the server restarts — which
- * is exactly as long as the tree in memory lives, so the two expire together.
+ * One ticket per account, handed out by the login form and good until the server
+ * restarts — exactly as long as the tree in memory lives, so the two expire
+ * together.
  */
-const SESSION = randomBytes(32).toString("hex");
+const TICKET = { user: randomBytes(32).toString("hex"), admin: randomBytes(32).toString("hex") };
 const COOKIE = "gen_session";
 
 const ticketOf = (req) => {
@@ -89,29 +95,132 @@ const ticketOf = (req) => {
   return "";
 };
 
-/** Does the Basic header carry the right pair. */
-function basicOk(req) {
-  const head = req.headers.authorization ?? "";
-  if (!head.startsWith("Basic ")) return false;
-  try {
-    return same(Buffer.from(head.slice(6), "base64").toString("utf8"), USER + ":" + PASS);
-  } catch {
-    return false;
+/**
+ * Who is asking: "admin", "user", or null for a stranger. The ticket comes from
+ * the login form; Basic stays for curl, the backup and the smoke check. Browsers
+ * need the form because Chrome does not reliably show its own password box for a
+ * bare address over plain HTTP, and a page we draw ourselves always works.
+ *
+ * With no password configured at all everyone is an admin: that is a server on
+ * your own machine, where there is nobody to keep out.
+ */
+function roleOf(req) {
+  if (!GUARDED) return "admin";
+
+  const ticket = ticketOf(req);
+  if (ticket.length === TICKET.admin.length) {
+    if (same(ticket, TICKET.admin)) return "admin";
+    if (same(ticket, TICKET.user)) return "user";
   }
+
+  const head = req.headers.authorization ?? "";
+  if (head.startsWith("Basic ")) {
+    try {
+      const pair = Buffer.from(head.slice(6), "base64").toString("utf8");
+      const at = pair.indexOf(":");
+      if (at > -1) return roleOfCreds(pair.slice(0, at), pair.slice(at + 1));
+    } catch {
+      /* not base64 — a stranger */
+    }
+  }
+  return null;
+}
+
+/* ------------------------- who came knocking ----------------------------- */
+
+/**
+ * The last ATTEMPTS_MAX sign-ins and attempts at one, newest last. It lives in
+ * memory like the tree: a restart wipes it. The durable trail is the request log
+ * on disk, where every POST /login shows up with its address and status.
+ */
+const ATTEMPTS_MAX = Number(process.env.GENEALOGY_ATTEMPTS ?? 10000);
+const attempts = [];
+
+/** The address the request really came from: a proxy puts it in a header. */
+const ipOf = (req) => {
+  const fwd = String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
+  return (fwd || req.socket?.remoteAddress || "-").replace(/^::ffff:/, "");
+};
+
+function recordAttempt(req, name, role) {
+  attempts.push({
+    at: new Date().toISOString(),
+    name: String(name ?? "").slice(0, 64),
+    ip: ipOf(req),
+    role: role ?? "",
+    ua: String(req.headers["user-agent"] ?? "").slice(0, 160),
+  });
+  // a ring in all but name: the oldest go once the cap is reached
+  if (attempts.length > ATTEMPTS_MAX) attempts.splice(0, attempts.length - ATTEMPTS_MAX);
 }
 
 /**
- * Let through if no password is set, or the ticket is ours, or the Basic header
- * matches. Basic stays for curl, the backup and the smoke check; browsers get the
- * ticket from the form — Chrome does not reliably show its own password box for a
- * bare address over plain HTTP, and a page we draw ourselves always works.
+ * Everything below is drawn into HTML, and the login field is filled in by
+ * whoever is knocking — so nothing reaches the page unescaped.
  */
-function allowed(req) {
-  if (!GUARDED) return true;
-  const ticket = ticketOf(req);
-  if (ticket.length === SESSION.length && same(ticket, SESSION)) return true;
-  return basicOk(req);
+const esc = (v) =>
+  String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+const SHELL =
+  "body{font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+  "background:#1b232e;color:#e6ebf1;margin:0;padding:24px}" +
+  "h1{font:400 20px Georgia,serif;margin:0 0 2px}" +
+  ".sub{color:#93a2b3;font-size:12.5px;margin:0 0 18px}" +
+  "a{color:#c08a2e}";
+
+/** The sign-in log: newest first, the refused ones marked. */
+function adminPage() {
+  const rows = attempts
+    .slice()
+    .reverse()
+    .map((a) => {
+      const who = a.role ? '<span class="ok">' + esc(a.role) + "</span>" : '<span class="no">refused</span>';
+      return (
+        "<tr><td class=t>" + esc(a.at.replace("T", " ").slice(0, 19)) + "</td>" +
+        "<td>" + esc(a.name || "—") + "</td>" +
+        "<td class=ip>" + esc(a.ip) + "</td>" +
+        "<td>" + who + "</td>" +
+        "<td class=ua>" + esc(a.ua || "—") + "</td></tr>"
+      );
+    })
+    .join("");
+
+  const refused = attempts.filter((a) => !a.role).length;
+  const ips = new Set(attempts.map((a) => a.ip)).size;
+
+  return (
+    '<!doctype html><html lang="en"><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+    "<title>Genealogy · who signed in</title><style>" + SHELL +
+    "table{border-collapse:collapse;width:100%;font-size:12.5px}" +
+    "th{text-align:left;color:#93a2b3;font-weight:400;border-bottom:1px solid #33404f;padding:6px 10px 6px 0}" +
+    "td{padding:5px 10px 5px 0;border-bottom:1px solid #232d3a;vertical-align:top}" +
+    ".t{color:#93a2b3;white-space:nowrap}.ip{font-family:ui-monospace,Menlo,monospace}" +
+    ".ok{color:#6aa84f}.no{color:#e9a79f}" +
+    ".ua{color:#6b7a89;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".n{display:inline-block;margin-right:18px;color:#93a2b3;font-size:12.5px}" +
+    ".n b{color:#e6ebf1;font-weight:600}" +
+    "</style><h1>Who signed in</h1>" +
+    '<p class="sub">Sign-ins and attempts at one, newest first. Kept in memory, ' +
+    ATTEMPTS_MAX + " most recent; a restart clears it. " +
+    '<a href="/">Tree</a> · <a href="/admin">Refresh</a> · <a href="/logout">Log out</a></p>' +
+    '<p><span class="n">records <b>' + attempts.length + "</b></span>" +
+    '<span class="n">refused <b>' + refused + "</b></span>" +
+    '<span class="n">addresses <b>' + ips + "</b></span></p>" +
+    "<table><tr><th>when (UTC)</th><th>login</th><th>address</th><th>result</th><th>browser</th></tr>" +
+    (rows || '<tr><td colspan=5 style="color:#6b7a89;padding-top:12px">Nobody yet.</td></tr>') +
+    "</table></html>"
+  );
 }
+
+/** Shown when a signed-in non-admin asks for /admin. */
+const notForYou = () =>
+  '<!doctype html><html lang="en"><meta charset="utf-8">' +
+  '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+  "<title>Genealogy</title><style>" + SHELL + "</style>" +
+  "<h1>Not for this account</h1>" +
+  '<p class="sub">This page belongs to the administrator. ' +
+  '<a href="/">Back to the tree</a> · <a href="/logout">Log out as someone else</a></p></html>';
 
 /** The login page. `bad` marks a second attempt after a wrong password. */
 const loginPage = (bad) =>
@@ -195,9 +304,6 @@ const clean = (v, max) => String(v ?? "-").replace(/[\r\n\t]+/g, " ").slice(0, m
 
 function logRequest(req, res, started) {
   if (!LOG_DIR) return;
-  // behind a proxy the real address comes in a header; without one it is the socket
-  const fwd = String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
-  const ip = (fwd || req.socket?.remoteAddress || "-").replace(/^::ffff:/, "");
   // How the caller identified itself — never with what. `-` against a 401 is a
   // login page that was never filled in, `auth` against one is a wrong password,
   // and from the status code alone the two look identical.
@@ -205,7 +311,7 @@ function logRequest(req, res, started) {
   const line =
     [
       new Date().toISOString(),
-      clean(ip, 45),
+      clean(ipOf(req), 45),
       clean(req.method, 8),
       clean(String(req.url ?? "").split("?")[0], 200), // path only
       res.statusCode,
@@ -646,20 +752,25 @@ const server = createServer(async (req, res) => {
     if (req.url === "/api/health") return json(res, 200, { ok: true });
 
     const html = String(req.headers.accept ?? "").includes("text/html");
+    const role = roleOf(req);
+    const home = (r) => (r === "admin" ? "/admin" : "/");
 
     // The login form and the ticket it hands out. Open by definition: this is
     // where one goes to stop being a stranger.
     if (req.url === "/login" && req.method === "GET") {
-      if (!GUARDED || allowed(req)) return redirect(res, "/");
+      if (role) return redirect(res, home(role));
       return page(res, 200, loginPage(false));
     }
     if (req.url === "/login" && req.method === "POST") {
       const form = new URLSearchParams(await readBody(req));
-      if (!GUARDED || same((form.get("u") ?? "") + ":" + (form.get("p") ?? ""), USER + ":" + PASS)) {
+      const name = form.get("u") ?? "";
+      const got = GUARDED ? roleOfCreds(name, form.get("p") ?? "") : "admin";
+      recordAttempt(req, name, got);
+      if (got) {
         res.writeHead(303, {
-          location: "/",
+          location: home(got),
           // no Secure flag: over plain http the browser would drop the cookie
-          "set-cookie": COOKIE + "=" + SESSION + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800",
+          "set-cookie": COOKIE + "=" + TICKET[got] + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800",
         });
         return res.end();
       }
@@ -671,7 +782,7 @@ const server = createServer(async (req, res) => {
       return res.end();
     }
 
-    if (!allowed(req)) {
+    if (!role) {
       // A browser is sent to the form; everything else keeps the plain 401 that
       // curl, the backup and the smoke check expect.
       if (html) return redirect(res, "/login");
@@ -682,11 +793,25 @@ const server = createServer(async (req, res) => {
       return res.end("A password is needed\n");
     }
 
+    // Only the administrator, and only when there is one at all.
+    if (req.url === "/admin") {
+      if (role !== "admin") return page(res, 403, notForYou());
+      return page(res, 200, adminPage());
+    }
+
     const url = new URL(req.url, "http://" + (req.headers.host ?? "127.0.0.1"));
 
     if (url.pathname === "/api/tree" && req.method === "GET") {
       const tree = await readTree();
-      return json(res, 200, { ok: true, tree, dir: store.where, store: store.kind, rev: await store.rev() });
+      return json(res, 200, {
+        ok: true,
+        tree,
+        dir: store.where,
+        store: store.kind,
+        guarded: GUARDED,
+        role: role ?? "",
+        rev: await store.rev(),
+      });
     }
 
     if (url.pathname === "/api/tree" && req.method === "POST") {
@@ -782,6 +907,9 @@ server.listen(PORT, HOST, () => {
   if (LOG_DIR) {
     const size = LOG_MAX >= 1e6 ? LOG_MAX / 1e6 + " MB" : Math.round(LOG_MAX / 1e3) + " KB";
     console.log("Requests: " + LOG_FILE + " (rotated at " + size + ", " + LOG_KEEP + " kept gzipped)");
+  }
+  if (GUARDED) {
+    console.log(HAS_ADMIN ? "Accounts: " + USER + ", " + ADMIN_USER + " (admin, /admin)" : "Accounts: " + USER);
   }
   if (!GUARDED && HOST !== "127.0.0.1") {
     console.warn("WARNING: the port is open to the outside with no password. Set GENEALOGY_USER and GENEALOGY_PASS.");

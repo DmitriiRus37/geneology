@@ -18,6 +18,10 @@ export interface DiskInfo {
   dir: string;
   store: Store;
   tree: TreeState | null;
+  /** the server asks for a password: there is something to log out of */
+  guarded: boolean;
+  /** which account we came in as, "admin" among them; empty when nobody asked */
+  role: string;
   /** an older server version: it knows no fingerprints, so it must not be written to */
   stale: boolean;
 }
@@ -42,6 +46,8 @@ export async function probeDisk(): Promise<DiskInfo | null> {
       dir: String(body.dir || "persons"),
       store: body.store === "memory" ? "memory" : "disk",
       tree: body.tree ?? null,
+      guarded: !!body.guarded,
+      role: String(body.role ?? ""),
       stale,
     };
   } catch {

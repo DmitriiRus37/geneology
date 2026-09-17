@@ -53,7 +53,9 @@ run_local:
 	@test -n "$$GENEALOGY_PASS" || { echo "Set GENEALOGY_PASS=<password>"; exit 1; }
 	-docker rm -f genealogy_local
 	docker run -d --name genealogy_local --memory=256m \
-		-e GENEALOGY_USER -e GENEALOGY_PASS -p $(PORT):5179 $(IMAGE)
+		-e GENEALOGY_USER -e GENEALOGY_PASS \
+		-e GENEALOGY_ADMIN_USER -e GENEALOGY_ADMIN_PASS \
+		-p $(PORT):5179 $(IMAGE)
 	@echo "http://127.0.0.1:$(PORT)"
 
 ## stop_local: stop that local container.
@@ -85,8 +87,8 @@ deploy: need_host need_pass save
 	$(SSH) "chown -R 1000:1000 $(REMOTE_DIR)/logs"
 	# the password goes as a file with mode 600, not on a command line where it
 	# would show up in the process list and in the shell history
-	@umask 077 && printf 'GENEALOGY_USER=%s\nGENEALOGY_PASS=%s\nGENEALOGY_PORT=%s\n' \
-		"$$GENEALOGY_USER" "$$GENEALOGY_PASS" "$(PORT)" > /tmp/genealogy.env
+	@umask 077 && printf 'GENEALOGY_USER=%s\nGENEALOGY_PASS=%s\nGENEALOGY_PORT=%s\nGENEALOGY_ADMIN_USER=%s\nGENEALOGY_ADMIN_PASS=%s\n' \
+		"$$GENEALOGY_USER" "$$GENEALOGY_PASS" "$(PORT)" "$$GENEALOGY_ADMIN_USER" "$$GENEALOGY_ADMIN_PASS" > /tmp/genealogy.env
 	$(SCP) /tmp/genealogy.env $(SSH_USER)@$(PROD_HOST):$(REMOTE_DIR)/.env
 	@rm -f /tmp/genealogy.env
 	$(SSH) "chmod 600 $(REMOTE_DIR)/.env"

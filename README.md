@@ -134,7 +134,16 @@ of your family stays on a machine you do not own. A fresh instance comes up genu
 the sample tree is stripped out of the image, so the page carries nobody's names.
 
 The server holds one tree, not one per visitor: everyone who logs in with the same password
-sees the same people, and **Clear** empties it for all of them at once.
+sees the same people, and **Clear** empties it for all of them at once. **Log out** drops the
+session.
+
+There can be a second account, the administrator, set through `GENEALOGY_ADMIN_USER` and
+`GENEALOGY_ADMIN_PASS`. It is the only one that may open `/admin`, where every sign-in and
+every attempt at one is listed — when, what login was typed, from which address, whether it
+was let through, and which browser. The last 10 000 are kept in memory (`GENEALOGY_ATTEMPTS`
+changes that) and a restart clears them; the durable trail is the request log on disk. The
+administrator lands on `/admin` straight after signing in and can still open the tree.
+Without those two variables the page exists for nobody.
 
 ```bash
 make check                                   # typecheck and tests
@@ -438,7 +447,14 @@ zip-архивом кнопкой **«Загрузить архив»**, пра�
 пустым: образцовое древо вырезано из образа, и на странице нет ничьих имён.
 
 Древо у сервера одно, а не по штуке на посетителя: все, кто вошёл тем же паролем, видят одних
-и тех же людей, и **«Очистить»** опустошает древо сразу для всех.
+и тех же людей, и **«Очистить»** опустошает древо сразу для всех. **«Выйти»** сбрасывает сессию.
+
+Может быть и вторая учётная запись, администратор: `GENEALOGY_ADMIN_USER` и
+`GENEALOGY_ADMIN_PASS`. Только ей открыт `/admin`, где перечислены все входы и попытки войти —
+когда, какой логин набрали, с какого адреса, пустили ли и какой браузер. Хранятся последние
+10 000 записей в памяти (`GENEALOGY_ATTEMPTS` меняет число), с перезапуском они пропадают;
+долговечный след — журнал запросов на диске. Администратор попадает на `/admin` сразу после
+входа и по-прежнему может открыть древо. Без этих двух переменных страницы нет ни для кого.
 
 ```bash
 make check                                   # типы и тесты

@@ -16,6 +16,10 @@ services:
       # end up on the open internet unprotected by accident.
       GENEALOGY_USER: ${GENEALOGY_USER:?set GENEALOGY_USER in .env next to this file}
       GENEALOGY_PASS: ${GENEALOGY_PASS:?set GENEALOGY_PASS in .env next to this file}
+      # The administrator: the only account that may open /admin. Optional — leave
+      # it out and the page exists for nobody.
+      GENEALOGY_ADMIN_USER: ${GENEALOGY_ADMIN_USER:-}
+      GENEALOGY_ADMIN_PASS: ${GENEALOGY_ADMIN_PASS:-}
     ports:
       - "${GENEALOGY_PORT:-5179}:5179"
     # Request log, one line per request, rotated by the server itself at 10 MB

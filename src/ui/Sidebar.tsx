@@ -135,6 +135,18 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
           value={lang}
           onPick={setLang}
         />
+        {/* Both are plain navigations, not fetches: the ticket lives in a cookie
+            the page cannot read, and only the server can take it back. */}
+        {where?.kind === "disk" && where.role === "admin" && (
+          <button className="quiet" onClick={() => (location.href = "/admin")}>
+            {t("rail.admin")}
+          </button>
+        )}
+        {where?.kind === "disk" && where.guarded && (
+          <button className="quiet" onClick={() => (location.href = "/logout")}>
+            {t("rail.logout")}
+          </button>
+        )}
         <button className="quiet" onClick={() => d({ type: "undo" })}>
           {t("rail.undo")}
         </button>
