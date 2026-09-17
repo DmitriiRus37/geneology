@@ -140,10 +140,13 @@ session.
 There can be a second account, the administrator, set through `GENEALOGY_ADMIN_USER` and
 `GENEALOGY_ADMIN_PASS`. It is the only one that may open `/admin`, where every sign-in and
 every attempt at one is listed — when, what login was typed, from which address, whether it
-was let through, and which browser. The last 10 000 are kept in memory (`GENEALOGY_ATTEMPTS`
-changes that) and a restart clears them; the durable trail is the request log on disk. The
-administrator lands on `/admin` straight after signing in and can still open the tree.
-Without those two variables the page exists for nobody.
+was let through, and which browser. The newest 10 000 (`GENEALOGY_ATTEMPTS` changes that)
+are kept as `logs/logins.jsonl` next to the request log — one JSON object per line,
+`{"when":…,"login":…,"address":…,"result":…,"browser":…}` — so a restart or a redeploy does
+not lose them, and the page links to the raw file. JSON does the escaping, so nothing the
+login field can carry will forge a record or break a line. The administrator lands on
+`/admin` straight after signing in and can still open the tree. Without those two variables
+the page exists for nobody.
 
 ```bash
 make check                                   # typecheck and tests
@@ -451,10 +454,13 @@ zip-архивом кнопкой **«Загрузить архив»**, пра�
 
 Может быть и вторая учётная запись, администратор: `GENEALOGY_ADMIN_USER` и
 `GENEALOGY_ADMIN_PASS`. Только ей открыт `/admin`, где перечислены все входы и попытки войти —
-когда, какой логин набрали, с какого адреса, пустили ли и какой браузер. Хранятся последние
-10 000 записей в памяти (`GENEALOGY_ATTEMPTS` меняет число), с перезапуском они пропадают;
-долговечный след — журнал запросов на диске. Администратор попадает на `/admin` сразу после
-входа и по-прежнему может открыть древо. Без этих двух переменных страницы нет ни для кого.
+когда, какой логин набрали, с какого адреса, пустили ли и какой браузер. Последние 10 000
+(`GENEALOGY_ATTEMPTS` меняет число) лежат в `logs/logins.jsonl` рядом с журналом запросов —
+по объекту JSON на строку, `{"when":…,"login":…,"address":…,"result":…,"browser":…}`, — так что
+перезапуск и выкладка их не теряют, а со страницы файл открывается как есть. Экранирует сам
+JSON: что бы ни набрали в поле логина, подделать запись или разорвать строку не выйдет.
+Администратор попадает на `/admin` сразу после входа и по-прежнему может открыть древо. Без
+этих двух переменных страницы нет ни для кого.
 
 ```bash
 make check                                   # типы и тесты

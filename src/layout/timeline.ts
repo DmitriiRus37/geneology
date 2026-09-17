@@ -194,24 +194,66 @@ export function applyTimeline(
     // middle of the parents, and whichever of them the years allowed would stand in
     // the column of their own spouse — with that spouse's line to their children
     // running straight through them.
-    const crowded = (id: string): boolean =>
+    /**
+     * Is `id` closer than `room` to anybody it shares a height with. The spreading
+     * above asks for the whole `need`, which is a card plus a full gap — that is
+     * what keeps the picture readable. Putting a card back is a different question:
+     * there the only thing that must hold is that nobody is touched and a line can
+     * still pass between them, so it asks for `snug` instead. Judging both by the
+     * full gap was what left an only child sitting a couple of dozen pixels beside
+     * its parents with fifty pixels of clear air on either side.
+     */
+    const crowded = (id: string, room: number): boolean =>
       ids.some((other) => {
         if (other === id) return false;
         const A = pos[id];
         const B = pos[other];
         if (B.y + B.h + 8 <= A.y || A.y + A.h + 8 <= B.y) return false;
-        return Math.abs(A.x - B.x) < need - 0.5;
+        return Math.abs(A.x - B.x) < room - 0.5;
       });
+
+    // the same fraction of the gap this file already treats as "close enough to matter"
+    const snug = NODE_W + Math.max(20, gaps.h * 0.4);
+
+    /** Move `id` as far towards `to` as it can go without crowding anyone. */
+    const easeTo = (id: string, to: number, room: number): boolean => {
+      const was = pos[id].x;
+      const dx = to - was;
+      if (Math.abs(dx) < 1) return false;
+      // The step used to be all or nothing: a card that could not come back the
+      // whole way stayed exactly where the spreading had left it, and an only
+      // child kept a jog in its arrow for the sake of a couple of pixels. Halving
+      // a few times finds the longest part of the way that is actually free.
+      let step = Math.min(Math.abs(dx), 60);
+      for (let tries = 0; tries < 7 && step >= 0.5; tries++) {
+        pos[id].x = was + Math.sign(dx) * step;
+        if (!crowded(id, room)) return true;
+        step /= 2;
+      }
+      pos[id].x = was;
+      return false;
+    };
 
     for (let round = 0; round < 8; round++) {
       let moved = false;
-      for (const id of ids) {
-        const dx = orig[id] - pos[id].x;
-        if (Math.abs(dx) < 1) continue;
-        const was = pos[id].x;
-        pos[id].x = was + Math.sign(dx) * Math.min(Math.abs(dx), 60);
-        if (crowded(id)) pos[id].x = was;
-        else moved = true;
+      for (const id of ids) if (easeTo(id, orig[id], need)) moved = true;
+      if (!moved) break;
+    }
+
+    // An only child belongs exactly under its parents — the one promise the
+    // generations layout makes and this mode kept breaking. Pulling every child
+    // to the middle would be wrong (siblings would pile into one column, and the
+    // one the years allowed would land in its own spouse's column), but an only
+    // child has nobody to collide with by definition. Parents first: a child
+    // aimed at a middle that is still about to move would only have to move again.
+    for (let round = 0; round < 3; round++) {
+      let moved = false;
+      for (const kid of ids) {
+        const ps = (g.parents[kid] ?? []).filter((p) => pos[p]);
+        if (!ps.length) continue;
+        if (ps.some((p) => (g.children[p] ?? []).some((c) => c !== kid && pos[c]))) continue; // not an only child
+        const mid = ps.reduce((n, p) => n + pos[p].x, 0) / ps.length;
+        if (easeTo(kid, mid, snug)) moved = true;
       }
       if (!moved) break;
     }

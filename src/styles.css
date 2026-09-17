@@ -311,6 +311,26 @@ textarea:focus-visible {
   flex-wrap: wrap;
   gap: 4px;
 }
+/* one row per kind of action, with a hairline between: undo, the tree itself,
+   pictures out of it, the session. Without it the footer read as a soup. */
+.fgroup {
+  flex: 0 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--panel-line);
+}
+.fgroup:empty {
+  display: none;
+}
+.fgroup.last {
+  align-items: center;
+  padding-bottom: 0;
+  margin-bottom: 0;
+  border-bottom: 0;
+}
 
 /* ---------- the canvas ---------- */
 #board {
@@ -795,6 +815,41 @@ svg#tree.picking {
   #board {
     flex: 1;
   }
+
+  /* On a phone the footer used to grow until the search box and the list of
+     people had no height left at all — the one thing the panel is for. It now
+     scrolls within its own bounds and the list keeps a floor. */
+  .rail-scroll {
+    min-height: 30vh;
+  }
+  .rail-foot {
+    padding: 8px 10px;
+    gap: 2px;
+    max-height: 30vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .fgroup {
+    padding-bottom: 4px;
+    margin-bottom: 4px;
+  }
+  .rail-foot button.quiet {
+    padding: 7px 8px;
+  }
+  /* the intro has done its job by the time the tree is on screen */
+  .rail-head p {
+    display: none;
+  }
+  .rail-head {
+    padding: 12px 14px 10px;
+  }
+  /* a long folder path is not worth three lines of a phone screen */
+  .where {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
 @media (min-width: 861px) {
   #railToggle {
@@ -828,9 +883,9 @@ svg#tree.picking {
   margin-top: 0;
 }
 .rail-foot .seg.langs button {
-  min-width: 34px;
-  padding: 3px 8px;
-  font-size: 11px;
+  min-width: 46px;
+  padding: 8px 14px;
+  font-size: 13px;
   letter-spacing: 0.04em;
 }
 

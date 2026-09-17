@@ -51,6 +51,15 @@ const PORT = Number(arg("--port") ?? process.env.PORT ?? 5179);
 const HOST = arg("--host") ?? process.env.HOST ?? "127.0.0.1";
 const MODE = arg("--store") ?? process.env.GENEALOGY_STORE ?? "disk";
 
+// Where anything we keep on disk goes. Empty means nothing is written at all:
+// on your own machine the terminal is enough.
+const LOG_DIR = process.env.LOG_DIR ?? "";
+const LOG_MAX = Number(process.env.LOG_MAX ?? 10e6); // 10 MB
+const LOG_KEEP = Number(process.env.LOG_KEEP ?? 3);
+const LOG_FILE = LOG_DIR ? join(LOG_DIR, "access.log") : "";
+const LOGINS_FILE = LOG_DIR ? join(LOG_DIR, "logins.jsonl") : "";
+if (LOG_DIR) mkdirSync(LOG_DIR, { recursive: true });
+
 /** An id ends up in a file name, so only harmless ones get through. */
 const okId = (v) => typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v);
 
@@ -129,9 +138,12 @@ function roleOf(req) {
 /* ------------------------- who came knocking ----------------------------- */
 
 /**
- * The last ATTEMPTS_MAX sign-ins and attempts at one, newest last. It lives in
- * memory like the tree: a restart wipes it. The durable trail is the request log
- * on disk, where every POST /login shows up with its address and status.
+ * The last ATTEMPTS_MAX sign-ins and attempts at one, newest last, kept both in
+ * memory and as a CSV in LOG_DIR so a restart does not lose them. The file is the
+ * record; memory is just the copy the page is drawn from.
+ *
+ * Every field is quoted and stripped of line breaks, so one record is always one
+ * line — the login is filled in by strangers and must not be able to forge a row.
  */
 const ATTEMPTS_MAX = Number(process.env.GENEALOGY_ATTEMPTS ?? 10000);
 const attempts = [];
@@ -142,17 +154,76 @@ const ipOf = (req) => {
   return (fwd || req.socket?.remoteAddress || "-").replace(/^::ffff:/, "");
 };
 
+/**
+ * One JSON object per line. Nothing needs escaping rules of its own: JSON.stringify
+ * already handles quotes, line breaks and anything else the login field can carry,
+ * and a line that will not parse is simply skipped on the way back in.
+ */
+const asRow = (a) =>
+  JSON.stringify({ when: a.at, login: a.name, address: a.ip, result: a.role || "refused", browser: a.ua });
+
+let loginRows = 0; // records in the file
+
+/** Read back what earlier runs wrote, keeping only the newest ATTEMPTS_MAX. */
+function loadAttempts() {
+  if (!LOG_DIR) return;
+  let lines;
+  try {
+    lines = readFileSync(LOGINS_FILE, "utf8").split("\n").filter(Boolean);
+  } catch {
+    return; // nobody has signed in on this machine yet
+  }
+  loginRows = lines.length;
+  for (const line of lines.slice(-ATTEMPTS_MAX)) {
+    try {
+      const r = JSON.parse(line);
+      attempts.push({
+        at: String(r.when ?? ""),
+        name: String(r.login ?? ""),
+        ip: String(r.address ?? ""),
+        role: r.result === "refused" ? "" : String(r.result ?? ""),
+        ua: String(r.browser ?? ""),
+      });
+    } catch {
+      /* a half-written line from a kill at the wrong moment — skip it */
+    }
+  }
+}
+
+/** Rewrite the file from memory: memory already holds exactly the newest ones. */
+function trimAttempts() {
+  try {
+    writeFileSync(LOGINS_FILE, attempts.map(asRow).join("\n") + "\n");
+    loginRows = attempts.length;
+  } catch (e) {
+    console.error("could not trim the sign-in log: " + (e && e.message));
+  }
+}
+
 function recordAttempt(req, name, role) {
-  attempts.push({
+  const one = {
     at: new Date().toISOString(),
     name: String(name ?? "").slice(0, 64),
     ip: ipOf(req),
     role: role ?? "",
     ua: String(req.headers["user-agent"] ?? "").slice(0, 160),
-  });
+  };
+  attempts.push(one);
   // a ring in all but name: the oldest go once the cap is reached
   if (attempts.length > ATTEMPTS_MAX) attempts.splice(0, attempts.length - ATTEMPTS_MAX);
+
+  if (!LOG_DIR) return;
+  try {
+    appendFileSync(LOGINS_FILE, asRow(one) + "\n");
+    loginRows++;
+    // rewriting on every append would be silly; a quarter over the cap is close enough
+    if (loginRows > ATTEMPTS_MAX * 1.25) trimAttempts();
+  } catch (e) {
+    console.error("could not write the sign-in log: " + (e && e.message));
+  }
 }
+
+loadAttempts();
 
 /**
  * Everything below is drawn into HTML, and the login field is filled in by
@@ -201,9 +272,11 @@ function adminPage() {
     ".n{display:inline-block;margin-right:18px;color:#93a2b3;font-size:12.5px}" +
     ".n b{color:#e6ebf1;font-weight:600}" +
     "</style><h1>Who signed in</h1>" +
-    '<p class="sub">Sign-ins and attempts at one, newest first. Kept in memory, ' +
-    ATTEMPTS_MAX + " most recent; a restart clears it. " +
-    '<a href="/">Tree</a> · <a href="/admin">Refresh</a> · <a href="/logout">Log out</a></p>' +
+    '<p class="sub">Sign-ins and attempts at one, newest first. The newest ' + ATTEMPTS_MAX +
+    (LOG_DIR ? " are kept in " + esc(LOGINS_FILE) + " and survive a restart. " : " are kept in memory only. ") +
+    '<a href="/">Tree</a> · <a href="/admin">Refresh</a>' +
+    (LOG_DIR ? ' · <a href="/admin/logins.jsonl">Raw file</a>' : "") +
+    ' · <a href="/logout">Log out</a></p>' +
     '<p><span class="n">records <b>' + attempts.length + "</b></span>" +
     '<span class="n">refused <b>' + refused + "</b></span>" +
     '<span class="n">addresses <b>' + ips + "</b></span></p>" +
@@ -258,15 +331,9 @@ const loginPage = (bad) =>
  * Headers and bodies never reach the log: the password is in one and the family
  * is in the other. Only the path is written, never the query string.
  */
-const LOG_DIR = process.env.LOG_DIR ?? "";
-const LOG_MAX = Number(process.env.LOG_MAX ?? 10e6); // 10 MB
-const LOG_KEEP = Number(process.env.LOG_KEEP ?? 3);
-const LOG_FILE = LOG_DIR ? join(LOG_DIR, "access.log") : "";
-
 let logged = 0; // bytes in the live file
 
 if (LOG_DIR) {
-  mkdirSync(LOG_DIR, { recursive: true });
   try {
     logged = statSync(LOG_FILE).size; // picking up after a restart
   } catch {
@@ -797,6 +864,19 @@ const server = createServer(async (req, res) => {
     if (req.url === "/admin") {
       if (role !== "admin") return page(res, 403, notForYou());
       return page(res, 200, adminPage());
+    }
+    if (req.url === "/admin/logins.jsonl") {
+      if (role !== "admin") return page(res, 403, notForYou());
+      if (!LOG_DIR) return json(res, 404, { ok: false, error: "nothing is kept on disk: LOG_DIR is not set" });
+      let body;
+      try {
+        body = readFileSync(LOGINS_FILE);
+      } catch {
+        body = Buffer.alloc(0); // nobody has signed in yet
+      }
+      // plain text on purpose: one glance in the browser, no download needed
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+      return res.end(body);
     }
 
     const url = new URL(req.url, "http://" + (req.headers.host ?? "127.0.0.1"));

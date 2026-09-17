@@ -16,8 +16,9 @@ restart wipes it. Zip reading and writing are hand-rolled on `node:zlib` — the
 still has no dependencies. `GENEALOGY_USER`/`GENEALOGY_PASS` turn on the guard: browsers log in at `/login` and carry
 a session cookie that dies with the process, tools keep using HTTP Basic.
 `GENEALOGY_ADMIN_USER`/`GENEALOGY_ADMIN_PASS` add a second account, the only one allowed on
-`/admin`, which lists the last `GENEALOGY_ATTEMPTS` (10000) sign-ins and attempts — kept in
-memory, escaped on the way out because the login field is filled in by strangers;
+`/admin`, which lists the last `GENEALOGY_ATTEMPTS` (10000) sign-ins and attempts. They are
+kept in `LOG_DIR/logins.jsonl`, one JSON object per line, and survive a restart; the login
+field is filled in by strangers, so it is HTML-escaped on the page and JSON does the rest;
 `--host`/`HOST` sets the bind address, still `127.0.0.1` by default. `/api/health` is the
 only route outside the guard. `LOG_DIR` turns on the request log (one line per request,
 no headers and no bodies); it rotates itself at `LOG_MAX` (10 MB) keeping `LOG_KEEP` (3)

@@ -233,7 +233,16 @@ test("a card was dragged to an empty spot — the lines to it touched nobody", (
 });
 
 test("an only child stands exactly under its parents — the line runs vertically", () => {
-  const s = real();
+  for (const byYears of [false, true]) onlyChildrenStandStraight({ ...real(), timeline: byYears }, byYears);
+});
+
+/**
+ * By years the cards are spread sideways so people of the same age do not land on
+ * top of each other, and putting them back used to be judged by the full gap: a
+ * child with fifty pixels of clear air beside it was still refused its place under
+ * its parents and kept a jog in its arrow. Both modes owe the same promise.
+ */
+function onlyChildrenStandStraight(s: TreeState, byYears: boolean): void {
   const { pos, level } = layout(s);
   const byChild: Record<string, string[]> = {};
   for (const l of s.links) (byChild[l.child] ||= []).push(l.parent);
@@ -255,9 +264,9 @@ test("an only child stands exactly under its parents — the line runs verticall
       crooked.push(s.people[child].name + " is off by " + Math.round(Math.abs(middle - pos[child].x)) + " px");
     }
   }
-  assert.deepEqual(crooked, []);
+  assert.deepEqual(crooked, [], byYears ? "by years" : "by generations");
   assert.ok(Object.keys(level).length > 0);
-});
+}
 
 test("the arrows to children never run at a slant", () => {
   const s = real();

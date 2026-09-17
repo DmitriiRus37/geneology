@@ -128,93 +128,108 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
             {where.blocked === "stale" ? t("where.recheck") : t("where.reread")}
           </button>
         )}
-        <Seg
-          className="langs"
-          title={t("rail.langTitle")}
-          options={[{ v: "ru", label: "RU" }, { v: "en", label: "EN" }]}
-          value={lang}
-          onPick={setLang}
-        />
-        {/* Both are plain navigations, not fetches: the ticket lives in a cookie
-            the page cannot read, and only the server can take it back. */}
-        {where?.kind === "disk" && where.role === "admin" && (
-          <button className="quiet" onClick={() => (location.href = "/admin")}>
-            {t("rail.admin")}
+        {/* Four groups, in the order they get reached for: undo while editing,
+            then the tree as a whole, then pictures out of it, then the session.
+            The JSON pair only shows where it is the only way in or out — with a
+            server holding the tree in memory the archive does the same job and
+            two of everything only confuses. */}
+        <div className="fgroup">
+          <button className="quiet" onClick={() => d({ type: "undo" })}>
+            {t("rail.undo")}
           </button>
-        )}
-        {where?.kind === "disk" && where.guarded && (
-          <button className="quiet" onClick={() => (location.href = "/logout")}>
-            {t("rail.logout")}
+        </div>
+
+        <div className="fgroup">
+          {where?.kind === "disk" && where.store === "memory" && (
+            <button className="quiet" onClick={() => zipRef.current?.click()}>
+              {t("rail.uploadZip")}
+            </button>
+          )}
+          {where?.kind === "disk" && (
+            <button
+              className="quiet"
+              onClick={async () => {
+                const err = await downloadZip();
+                if (err) d({ type: "notice", msg: msg("notice.zipFailed", { detail: err }) });
+              }}
+            >
+              {t("rail.downloadZip")}
+            </button>
+          )}
+          {!(where?.kind === "disk" && where.store === "memory") && (
+            <>
+              <button className="quiet" onClick={() => saveJson(s.tree)}>
+                {t("rail.saveFile")}
+              </button>
+              <button className="quiet" onClick={() => fileRef.current?.click()}>
+                {t("rail.openFile")}
+              </button>
+            </>
+          )}
+          {!!ids.length && (
+            <button
+              className="quiet danger"
+              onClick={() => {
+                if (confirm(t("confirm.clear", { n: ids.length }))) d({ type: "wipe" });
+              }}
+            >
+              {t("rail.clear")}
+            </button>
+          )}
+        </div>
+
+        <div className="fgroup">
+          <button
+            className="quiet"
+            onClick={() => {
+              if (!exportSvgFile(bbox)) d({ type: "notice", msg: msg("notice.empty") });
+            }}
+          >
+            {t("rail.svg")}
           </button>
-        )}
-        <button className="quiet" onClick={() => d({ type: "undo" })}>
-          {t("rail.undo")}
-        </button>
-        <button className="quiet" onClick={() => saveJson(s.tree)}>
-          {t("rail.saveFile")}
-        </button>
-        <button className="quiet" onClick={() => fileRef.current?.click()}>
-          {t("rail.openFile")}
-        </button>
-        {/* An archive of cards. Uploading replaces the whole tree, so only a server
-            that keeps people in memory offers it: you will not wipe your own
-            persons/ folder with one click. Downloading works from anywhere. */}
-        {where?.kind === "disk" && where.store === "memory" && (
-          <button className="quiet" onClick={() => zipRef.current?.click()}>
-            {t("rail.uploadZip")}
+          <button
+            className="quiet"
+            onClick={() => {
+              const ok = exportPngFile(bbox, () => d({ type: "notice", msg: msg("notice.pngFailed") }));
+              if (!ok) d({ type: "notice", msg: msg("notice.empty") });
+            }}
+          >
+            {t("rail.png")}
           </button>
-        )}
-        {where?.kind === "disk" && (
           <button
             className="quiet"
             onClick={async () => {
-              const err = await downloadZip();
-              if (err) d({ type: "notice", msg: msg("notice.zipFailed", { detail: err }) });
+              d({ type: "notice", msg: msg("notice.pdfBuilding") });
+              const ok = await exportPdfFile(bbox, (detail) => d({ type: "notice", msg: msg("notice.pdfFailed", { detail }) }));
+              if (!ok) d({ type: "notice", msg: msg("notice.empty") });
             }}
           >
-            {t("rail.downloadZip")}
+            {t("rail.pdf")}
           </button>
-        )}
-        {/* Wipes the whole tree, for everyone who logs in with the same password —
-            the server keeps one tree, not one per visitor. Undo still brings it
-            back until the page is reloaded, so the archive is the real safety net. */}
-        {!!ids.length && (
-          <button
-            className="quiet danger"
-            onClick={() => {
-              if (confirm(t("confirm.clear", { n: ids.length }))) d({ type: "wipe" });
-            }}
-          >
-            {t("rail.clear")}
-          </button>
-        )}
-        <button
-          className="quiet"
-          onClick={() => {
-            if (!exportSvgFile(bbox)) d({ type: "notice", msg: msg("notice.empty") });
-          }}
-        >
-          {t("rail.svg")}
-        </button>
-        <button
-          className="quiet"
-          onClick={() => {
-            const ok = exportPngFile(bbox, () => d({ type: "notice", msg: msg("notice.pngFailed") }));
-            if (!ok) d({ type: "notice", msg: msg("notice.empty") });
-          }}
-        >
-          {t("rail.png")}
-        </button>
-        <button
-          className="quiet"
-          onClick={async () => {
-            d({ type: "notice", msg: msg("notice.pdfBuilding") });
-            const ok = await exportPdfFile(bbox, (detail) => d({ type: "notice", msg: msg("notice.pdfFailed", { detail }) }));
-            if (!ok) d({ type: "notice", msg: msg("notice.empty") });
-          }}
-        >
-          {t("rail.pdf")}
-        </button>
+        </div>
+
+        <div className="fgroup last">
+          <Seg
+            className="langs"
+            title={t("rail.langTitle")}
+            options={[{ v: "ru", label: "RU" }, { v: "en", label: "EN" }]}
+            value={lang}
+            onPick={setLang}
+          />
+          {/* Both are plain navigations, not fetches: the ticket lives in a cookie
+              the page cannot read, and only the server can take it back. */}
+          {where?.kind === "disk" && where.role === "admin" && (
+            <button className="quiet" onClick={() => (location.href = "/admin")}>
+              {t("rail.admin")}
+            </button>
+          )}
+          {where?.kind === "disk" && where.guarded && (
+            <button className="quiet logout" onClick={() => (location.href = "/logout")}>
+              {t("rail.logout")}
+            </button>
+          )}
+        </div>
+
         <input
           ref={zipRef}
           type="file"
