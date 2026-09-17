@@ -13,7 +13,7 @@ import type { Rect } from "./route.ts";
 const real = (): TreeState =>
   normalize(JSON.parse(readFileSync(new URL("../data/family.json", import.meta.url), "utf8")));
 
-/** Пересечения линий на раскладке — той же формулой, что в tools/metrics.ts. */
+/** Line crossings on a layout — by the same formula as in tools/metrics.ts. */
 const crossingsOf = (s: TreeState) => {
   const { pos, level } = layout(s);
   const rects: Rect[] = Object.keys(pos).map((id) => ({
@@ -25,7 +25,7 @@ const crossingsOf = (s: TreeState) => {
   return edgeStats(computeEdges(s, pos, level, null), rects);
 };
 
-/** Пары: двое родителей одного ребёнка или записанный брак. */
+/** Couples: two parents of one child, or a recorded marriage. */
 const couplesOf = (s: TreeState): [string, string][] => {
   const seen = new Set<string>();
   const out: [string, string][] = [];
@@ -44,11 +44,12 @@ const couplesOf = (s: TreeState): [string, string][] => {
 };
 
 /**
- * Пример, где порядок обхода даёт пересечение, а перестановка убирает: жена
- * старшего сына встаёт между братьями, и спуск от её родителей режет шину семьи
- * мужа. Лечится тем, что жена встаёт снаружи, а её родители — над ней.
+ * A case where the traversal order produces a crossing and reordering removes it: the
+ * elder son's wife stands between the brothers, and the descent from her parents cuts the
+ * bus of her husband's family. The cure is for the wife to stand on the outside, with her
+ * parents above her.
  */
-function свояки(): { s: TreeState; ids: Record<string, string> } {
+function inLaws(): { s: TreeState; ids: Record<string, string> } {
   const s = normalize({});
   const P1 = addPerson(s, { name: "Пётр Иванович Первый", sex: "m", born: "1920" });
   const P2 = addPerson(s, { name: "Прасковья Первая", sex: "f", born: "1922" });
@@ -67,73 +68,73 @@ function свояки(): { s: TreeState; ids: Record<string, string> } {
   return { s, ids: { P1, P2, Q1, Q2, X1, S1, X2 } };
 }
 
-test("жена между братьями мужа: перестановка убирает пересечение", () => {
-  const { s, ids } = свояки();
+test("a wife between her husband's brothers: reordering removes the crossing", () => {
+  const { s, ids } = inLaws();
   const st = crossingsOf(s);
-  assert.equal(st.visual, 0, "пересечений не осталось");
+  assert.equal(st.visual, 0, "no crossings are left");
   assert.equal(st.through, 0);
 
   const { pos } = layout(s);
-  // пара вместе, братья по старшинству, родители жены ровно над ней
-  assert.ok(Math.abs(pos[ids.X1].x - pos[ids.S1].x) <= NODE_W + 24 + 1, "супруги рядом");
-  assert.ok(pos[ids.X1].x < pos[ids.X2].x, "старший брат левее младшего");
-  assert.ok(pos[ids.S1].x < pos[ids.X1].x, "жена снаружи, а не между братьями");
+  // the couple together, the brothers by seniority, the wife's parents exactly above her
+  assert.ok(Math.abs(pos[ids.X1].x - pos[ids.S1].x) <= NODE_W + 24 + 1, "the spouses are side by side");
+  assert.ok(pos[ids.X1].x < pos[ids.X2].x, "the elder brother is to the left of the younger");
+  assert.ok(pos[ids.S1].x < pos[ids.X1].x, "the wife is on the outside, not between the brothers");
   const midQ = (pos[ids.Q1].x + pos[ids.Q2].x) / 2;
-  assert.ok(Math.abs(midQ - pos[ids.S1].x) <= 1, "родители жены ровно над ней");
+  assert.ok(Math.abs(midQ - pos[ids.S1].x) <= 1, "the wife's parents are exactly above her");
 });
 
-test("перестановка не трогает то, что уже было хорошо", () => {
+test("reordering does not touch what was already good", () => {
   const s = real();
-  // на исходных данных остаются только неустранимые пересечения у Тихомировых
+  // on the original data only the unavoidable crossings in one family remain
   assert.ok(crossingsOf(s).crossings <= 3);
 });
 
-test("супруги стоят рядом, между ними никого", () => {
-  for (const s of [real(), свояки().s]) {
+test("spouses stand side by side with nobody between them", () => {
+  for (const s of [real(), inLaws().s]) {
     const { pos, level } = layout(s);
     for (const [a, b] of couplesOf(s)) {
       if (level[a] !== level[b]) continue;
       const lo = Math.min(pos[a].x, pos[b].x);
       const hi = Math.max(pos[a].x, pos[b].x);
-      // малый зазор пары; до обычного (58) блок раздвигается только ради отвесных линий к детям обеих семей
-      assert.ok(hi - lo <= NODE_W + 58 + 1, `${s.people[a].name} и ${s.people[b].name} разошлись на ${Math.round(hi - lo)} px`);
-      const между = Object.keys(pos).find((id) => id !== a && id !== b && level[id] === level[a] && pos[id].x > lo && pos[id].x < hi);
-      assert.equal(между, undefined, `между супругами встал ${между && s.people[между].name}`);
+      // the couple's small gap; the block is spread to the normal one (58) only for the sake of vertical lines to the children of both families
+      assert.ok(hi - lo <= NODE_W + 58 + 1, `${s.people[a].name} and ${s.people[b].name} drifted ${Math.round(hi - lo)} px apart`);
+      const between = Object.keys(pos).find((id) => id !== a && id !== b && level[id] === level[a] && pos[id].x > lo && pos[id].x < hi);
+      assert.equal(between, undefined, `${between && s.people[between].name} stood between the spouses`);
     }
   }
 });
 
-test("братья и сёстры идут по старшинству", () => {
+test("siblings run in order of seniority", () => {
   const s = real();
   const { pos, level } = layout(s);
   const byChild: Record<string, string[]> = {};
   for (const l of s.links) (byChild[l.child] ||= []).push(l.parent);
   const byUnion: Record<string, string[]> = {};
   for (const c of Object.keys(byChild)) (byUnion[byChild[c].slice().sort().join("|")] ||= []).push(c);
-  let проверено = 0;
+  let checked = 0;
   for (const kids of Object.values(byUnion)) {
-    const сДатами = kids.filter((k) => birthKey(s.people[k]) !== null);
-    for (let i = 1; i < сДатами.length; i++) {
+    const dated = kids.filter((k) => birthKey(s.people[k]) !== null);
+    for (let i = 1; i < dated.length; i++) {
       for (let j = 0; j < i; j++) {
-        const a = сДатами[j];
-        const b = сДатами[i];
+        const a = dated[j];
+        const b = dated[i];
         if (level[a] !== level[b]) continue;
         const ka = birthKey(s.people[a])!;
         const kb = birthKey(s.people[b])!;
         if (ka === kb) continue;
-        проверено++;
+        checked++;
         assert.ok(
           (ka < kb) === (pos[a].x < pos[b].x),
-          `${s.people[a].name} и ${s.people[b].name} стоят не по старшинству`,
+          `${s.people[a].name} and ${s.people[b].name} do not stand in order of seniority`,
         );
       }
     }
   }
-  assert.ok(проверено > 5, "проверка что-то проверила");
+  assert.ok(checked > 5, "the check actually checked something");
 });
 
-test("у кого две семьи — один супруг слева, другой справа", () => {
-  const { s, ids } = свояки();
+test("whoever has two families gets one spouse on the left and the other on the right", () => {
+  const { s, ids } = inLaws();
   const T1 = addPerson(s, { name: "Тамара Первая", sex: "f", born: "1956" });
   const T2 = addPerson(s, { name: "Татьяна Вторая", sex: "f", born: "1958" });
   const C1 = addPerson(s, { name: "Пётр Петрович Младший", sex: "m", born: "1980" });
@@ -144,6 +145,6 @@ test("у кого две семьи — один супруг слева, дру
   link(s, T2, C2);
   const { pos } = layout(s);
   const x = pos[ids.X2].x;
-  assert.ok((pos[T1].x < x && pos[T2].x > x) || (pos[T2].x < x && pos[T1].x > x), "жёны по разные стороны");
-  assert.ok(pos[C1].x < pos[C2].x, "дети по старшинству");
+  assert.ok((pos[T1].x < x && pos[T2].x > x) || (pos[T2].x < x && pos[T1].x > x), "the wives are on opposite sides");
+  assert.ok(pos[C1].x < pos[C2].x, "the children in order of seniority");
 });

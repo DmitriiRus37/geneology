@@ -13,7 +13,7 @@ const real = (): TreeState =>
 
 const finite = (v: number) => Number.isFinite(v);
 
-test("на реальной родословной карточки не налезают друг на друга", () => {
+test("on the real family tree the cards do not collide", () => {
   const { pos } = layout(real());
   const ids = Object.keys(pos);
   assert.equal(ids.length, 38);
@@ -30,53 +30,53 @@ test("на реальной родословной карточки не нал�
   assert.deepEqual(bad, []);
 });
 
-test("в раскладке нет NaN", () => {
+test("there is no NaN in the layout", () => {
   const { pos, level } = layout(real());
   for (const id of Object.keys(pos)) {
     const b = pos[id];
-    assert.ok(finite(b.x) && finite(b.y) && finite(b.w) && finite(b.h), "координаты " + id);
-    assert.ok(Number.isInteger(level[id]) && level[id] >= 0, "поколение " + id);
+    assert.ok(finite(b.x) && finite(b.y) && finite(b.w) && finite(b.h), "coordinates of " + id);
+    assert.ok(Number.isInteger(level[id]) && level[id] >= 0, "generation of " + id);
   }
   const b = bboxOf(pos);
   assert.ok(b && finite(b.w) && finite(b.h) && b.w > 0 && b.h > 0);
 });
 
-test("в разметке связей нет NaN и рисуются все стрелки", () => {
+test("there is no NaN in the link geometry and every arrow is drawn", () => {
   const s = real();
   const { pos, level } = layout(s);
   const items = computeEdges(s, pos, level, null);
   assert.ok(items.length > 0);
-  // у ребёнка двух родителей стрелка одна: она выходит из общей точки семьи
+  // a child of two parents gets one arrow: it leaves the family's shared point
   const arrows = items.filter((i) => i.kind === "path" && i.arrow).length;
-  assert.equal(arrows, new Set(s.links.map((l) => l.child)).size, "по стрелке на каждого ребёнка");
+  assert.equal(arrows, new Set(s.links.map((l) => l.child)).size, "one arrow per child");
   for (const it of items) {
     if (it.kind === "path") assert.ok(!/NaN|Infinity|undefined/.test(it.d), it.d);
     else assert.ok(finite(it.x) && finite(it.y));
   }
 });
 
-test("ребёнок всегда ниже родителя, супруги — вровень", () => {
+test("a child is always below its parent, and spouses are level", () => {
   const s = real();
   const { level } = layout(s);
   for (const l of s.links) assert.ok(level[l.child] > level[l.parent], l.parent + " → " + l.child);
   for (const p of s.pairs) assert.equal(level[p.a], level[p.b]);
 });
 
-test("режим по годам: год есть у каждого, оценки помечены", () => {
+test("the by-years mode: everyone has a year, and the estimates are marked", () => {
   const s = real();
   s.timeline = true;
   const { tl, pos } = layout(s);
   assert.ok(tl);
   for (const id of Object.keys(s.people)) {
-    assert.ok(Number.isFinite(tl.year[id]), "год " + id);
+    assert.ok(Number.isFinite(tl.year[id]), "year of " + id);
     assert.ok(Number.isFinite(pos[id].y));
   }
   const known = Object.keys(s.people).filter((id) => !tl.est[id]);
-  assert.ok(known.length > 20, "у большинства год взят из карточки, а не оценён");
-  assert.ok(tl.min >= 1800 && tl.max <= 2100, "шкала лет в разумных пределах");
+  assert.ok(known.length > 20, "for most of them the year is taken from the card rather than estimated");
+  assert.ok(tl.min >= 1800 && tl.max <= 2100, "the scale of years stays within reason");
 });
 
-test("перетаскивание закрепляет карточку на месте", () => {
+test("a drag pins the card in place", () => {
   const s = real();
   const id = Object.keys(s.people)[0];
   s.people[id].fx = 1234;
@@ -86,89 +86,89 @@ test("перетаскивание закрепляет карточку на м
   assert.equal(pos[id].y, 567);
 });
 
-test("пустое древо не роняет раскладку", () => {
+test("an empty tree does not bring the layout down", () => {
   const { pos, tl } = layout(normalize({ people: {}, links: [], pairs: [], timeline: true }));
   assert.deepEqual(pos, {});
   assert.equal(tl, null);
   assert.equal(bboxOf(pos), null);
 });
 
-test("ещё не пристроенные стоят под древом, а не за его правым краем", () => {
+test("those not yet placed stand below the tree, not past its right edge", () => {
   const s = real();
-  const отец = addPerson(s, { name: "Пермяков Александр Владимирович" });
-  const мать = addPerson(s, { name: "Пермякова Анна Валерьевна" });
-  addPair(s, отец, мать);
+  const father = addPerson(s, { name: "Пермяков Александр Владимирович" });
+  const mother = addPerson(s, { name: "Пермякова Анна Валерьевна" });
+  addPair(s, father, mother);
   const { pos, lonePlate } = layout(s);
 
-  // в исходных данных уже есть непристроенные — сравниваем с теми, кто в древе
-  const вдреве = new Set(s.links.flatMap((l) => [l.parent, l.child]));
-  const родня = [...вдреве];
-  const ближайший = Math.min(...родня.map((id) => Math.abs(pos[id].x - pos[отец].x)));
-  assert.ok(ближайший < 400, "по горизонтали рядом с древом, а не за краем: " + Math.round(ближайший));
+  // the original data already has unplaced people — we compare against those in the tree
+  const inTree = new Set(s.links.flatMap((l) => [l.parent, l.child]));
+  const kin = [...inTree];
+  const nearest = Math.min(...kin.map((id) => Math.abs(pos[id].x - pos[father].x)));
+  assert.ok(nearest < 400, "horizontally beside the tree rather than past its edge: " + Math.round(nearest));
 
-  const низ = Math.max(...родня.map((id) => pos[id].y + pos[id].h));
-  assert.ok(pos[отец].y > низ, "блок лежит ниже древа");
-  assert.ok(lonePlate && pos[отец].y > lonePlate.y, "подпись блока стоит над ним");
+  const bottom = Math.max(...kin.map((id) => pos[id].y + pos[id].h));
+  assert.ok(pos[father].y > bottom, "the block lies below the tree");
+  assert.ok(lonePlate && pos[father].y > lonePlate.y, "the block's caption stands above it");
 
-  // супруги остаются рядом
-  assert.ok(Math.abs(pos[отец].x - pos[мать].x) < NODE_W * 1.6);
+  // the spouses stay side by side
+  assert.ok(Math.abs(pos[father].x - pos[mother].x) < NODE_W * 1.6);
 });
 
-test("связанный родитель встаёт вплотную к ребёнку, а не в общий блок", () => {
+test("a linked parent stands right by their child rather than in the common block", () => {
   const s = real();
-  const дочь = Object.keys(s.people).find((id) => s.people[id].name.includes("Екатерина Александровна"))!;
-  const отец = addPerson(s, { name: "Пермяков Александр Владимирович" });
-  assert.equal(link(s, отец, дочь).ok, true);
+  const daughter = Object.keys(s.people).find((id) => s.people[id].name.includes("Екатерина Александровна"))!;
+  const father = addPerson(s, { name: "Пермяков Александр Владимирович" });
+  assert.equal(link(s, father, daughter).ok, true);
   const { pos, lonePlate } = layout(s);
-  // у дочери теперь двое родителей, она встаёт между ними
-  const другой = parentsOf(s, дочь).find((q) => q !== отец)!;
-  const слева = Math.min(pos[отец].x, pos[другой].x);
-  const справа = Math.max(pos[отец].x, pos[другой].x);
-  assert.ok(pos[дочь].x >= слева - 1 && pos[дочь].x <= справа + 1, "дочь между родителями");
-  assert.ok(pos[отец].y < pos[дочь].y, "и ниже них");
-  assert.ok(!lonePlate || pos[отец].y < lonePlate.y, "он в древе, а не в блоке непристроенных");
+  // the daughter now has two parents and stands between them
+  const other = parentsOf(s, daughter).find((q) => q !== father)!;
+  const leftX = Math.min(pos[father].x, pos[other].x);
+  const rightX = Math.max(pos[father].x, pos[other].x);
+  assert.ok(pos[daughter].x >= leftX - 1 && pos[daughter].x <= rightX + 1, "the daughter is between her parents");
+  assert.ok(pos[father].y < pos[daughter].y, "and below them");
+  assert.ok(!lonePlate || pos[father].y < lonePlate.y, "he is in the tree, not in the block of the unplaced");
 });
 
-test("по годам: супруг с известной датой задаёт год второму", () => {
+test("by years: a spouse with a known date sets the year for the other", () => {
   const s = real();
   s.timeline = true;
   const id = (part: string) => Object.keys(s.people).find((k) => s.people[k].name.includes(part))!;
 
-  const алексей = id("Алексей Иванович Якунин"); // 28.02.1932
-  const алина = id("Алина Александровна"); // дат нет, но у них общие дети
+  const alexey = id("Алексей Иванович Якунин"); // 28.02.1932
+  const alina = id("Алина Александровна"); // дат нет, но у них общие дети
   const { tl, pos } = layout(s);
   assert.ok(tl);
 
-  assert.equal(tl.year[алексей], 1932);
-  assert.equal(tl.year[алина], 1932, "жена встала вровень с мужем, а не по средней родне");
-  assert.ok(tl.est[алина], "год помечен как оценка");
-  const центр = (k: string) => pos[k].y + pos[k].h / 2;
-  assert.ok(Math.abs(центр(алексей) - центр(алина)) < 0.6, "и на холсте на одной высоте");
+  assert.equal(tl.year[alexey], 1932);
+  assert.equal(tl.year[alina], 1932, "the wife stood level with her husband rather than by the average of her kin");
+  assert.ok(tl.est[alina], "the year is marked as an estimate");
+  const centreOf = (k: string) => pos[k].y + pos[k].h / 2;
+  assert.ok(Math.abs(centreOf(alexey) - centreOf(alina)) < 0.6, "and on the canvas at the same height");
 });
 
-test("по годам: то же правило работает и для записанного брака", () => {
+test("by years: the same rule works for a recorded marriage too", () => {
   const s = real();
   s.timeline = true;
   const id = (part: string) => Object.keys(s.people).find((k) => s.people[k].name.includes(part))!;
-  const лидия = id("Лидия Лесняк");
-  const леонид = id("Леонид Иванович"); // 16.10.1957, в браке с Лидией
-  s.people[лидия].born = ""; // забыли её дату
+  const lidia = id("Лидия Лесняк");
+  const leonid = id("Леонид Иванович"); // 16.10.1957, в браке с Лидией
+  s.people[lidia].born = ""; // her date was forgotten
   const { tl } = layout(s);
-  assert.equal(tl!.year[леонид], 1957);
-  assert.equal(tl!.year[лидия], 1957, "общих детей у них нет, но пара есть — и год тот же");
+  assert.equal(tl!.year[leonid], 1957);
+  assert.equal(tl!.year[lidia], 1957, "they have no shared children, but they are a couple — so the year is the same");
 });
 
-test("по годам: своя дата всегда важнее супруга", () => {
+test("by years: one's own date always outweighs a spouse's", () => {
   const s = real();
   s.timeline = true;
   const id = (part: string) => Object.keys(s.people).find((k) => s.people[k].name.includes(part))!;
   const { tl } = layout(s);
-  const анна = id("Анна Фёдоровна"); // 1904, жена Ивана Егоровича 1902
-  assert.equal(tl!.year[анна], 1904);
-  assert.ok(!tl!.est[анна]);
+  const anna = id("Анна Фёдоровна"); // 1904, жена Ивана Егоровича 1902
+  assert.equal(tl!.year[anna], 1904);
+  assert.ok(!tl!.est[anna]);
 });
 
-/** Прямоугольники карточек — по ним проверяем, что линии никого не задевают. */
+/** The cards' rectangles — we check against them that the lines touch nobody. */
 const cardsOf = (pos: Record<string, { x: number; y: number; w: number; h: number }>): Rect[] =>
   Object.keys(pos).map((id) => ({
     x1: pos[id].x - pos[id].w / 2,
@@ -185,81 +185,81 @@ const crossings = (s: TreeState) => {
     .filter((i) => hitsCard(i.pts, rects));
 };
 
-test("проверка пересечений сама работает", () => {
+test("the crossing check itself works", () => {
   const rect: Rect = { x1: 0, y1: 0, x2: 100, y2: 50 };
-  assert.ok(hitsCard([{ x: 50, y: -20 }, { x: 50, y: 70 }], [rect]), "линия насквозь — пересечение");
-  assert.equal(hitsCard([{ x: 50, y: -20 }, { x: 50, y: -5 }], [rect]), null, "линия выше — нет");
-  assert.equal(hitsCard([{ x: 120, y: -20 }, { x: 120, y: 70 }], [rect]), null, "линия сбоку — нет");
+  assert.ok(hitsCard([{ x: 50, y: -20 }, { x: 50, y: 70 }], [rect]), "a line straight through is a crossing");
+  assert.equal(hitsCard([{ x: 50, y: -20 }, { x: 50, y: -5 }], [rect]), null, "a line above is not");
+  assert.equal(hitsCard([{ x: 120, y: -20 }, { x: 120, y: 70 }], [rect]), null, "a line to the side is not");
 });
 
-test("ни одна связь не проходит сквозь карточку", () => {
+test("not one link passes through a card", () => {
   assert.deepEqual(crossings(real()).map((i) => i.d), []);
 });
 
-test("брак увёл человека вниз — родня едет за ним, а не остаётся в шапке древа", () => {
-  // ровно ваш случай: женился на девушке из ветки поглубже. Раньше её родители
-  // оставались в самом верху, за четыре ряда от дочери.
+test("a marriage carried someone down — their kin move with them instead of staying at the head of the tree", () => {
+  // exactly the reported case: he married a girl from a deeper branch. Her parents used
+  // to stay right at the top, four rows away from their daughter.
   const s = real();
-  const дмитрий = Object.keys(s.people).find((id) => s.people[id].name.includes("Дмитрий Сергеевич"))!;
-  const глубже = Object.entries(layout(s).level).sort((a, b) => b[1] - a[1])[0][0];
-  const жена = addPerson(s, { name: "Пермякова Анастасия Александровна" });
-  const тесть = addPerson(s, { name: "Пермяков Александр Владимирович" });
-  assert.equal(link(s, глубже, жена).ok, true);
-  assert.equal(link(s, тесть, жена).ok, true);
-  addPair(s, дмитрий, жена);
+  const dmitry = Object.keys(s.people).find((id) => s.people[id].name.includes("Дмитрий Сергеевич"))!;
+  const deepest = Object.entries(layout(s).level).sort((a, b) => b[1] - a[1])[0][0];
+  const wife = addPerson(s, { name: "Пермякова Анастасия Александровна" });
+  const wifesFather = addPerson(s, { name: "Пермяков Александр Владимирович" });
+  assert.equal(link(s, deepest, wife).ok, true);
+  assert.equal(link(s, wifesFather, wife).ok, true);
+  addPair(s, dmitry, wife);
 
   const { level, pos } = layout(s);
-  assert.equal(level[жена] - level[тесть], 1, "тесть ровно на ряд выше дочери");
-  assert.ok(pos[тесть].y < pos[жена].y, "и выше неё на холсте");
+  assert.equal(level[wife] - level[wifesFather], 1, "the wife's father is exactly one row above his daughter");
+  assert.ok(pos[wifesFather].y < pos[wife].y, "and above her on the canvas");
   assert.deepEqual(crossings(s).map((i) => i.d), []);
 });
 
-test("каждый родитель ровно на ряд выше своих детей", () => {
+test("every parent is exactly one row above their children", () => {
   const s = real();
   const { level } = layout(s);
-  const далеко = s.links
+  const farApart = s.links
     .filter((l) => level[l.child] - level[l.parent] !== 1)
     .map((l) => s.people[l.parent].name + " → " + s.people[l.child].name);
-  assert.deepEqual(далеко, []);
+  assert.deepEqual(farApart, []);
 });
 
-test("карточку утащили на свободное место — линии до неё никого не задели", () => {
+test("a card was dragged to an empty spot — the lines to it touched nobody", () => {
   const s = real();
   const id = Object.keys(s.people).find((k) => s.people[k].name.includes("Екатерина Александровна"))!;
   const b = bboxOf(layout(s).pos)!;
-  s.people[id].fx = b.x1 - 420; // слева от всего древа, там пусто
-  s.people[id].fy = b.y2 + 60; // и ниже родителей: вверх линия вышла бы из их же карточки
+  s.people[id].fx = b.x1 - 420; // to the left of the whole tree, where it is empty
+  s.people[id].fy = b.y2 + 60; // and below the parents: going up, the line would leave their own card
   assert.deepEqual(crossings(s).map((i) => i.d), []);
 });
 
-test("единственный ребёнок стоит точно под родителями — линия идёт отвесно", () => {
+test("an only child stands exactly under its parents — the line runs vertically", () => {
   const s = real();
   const { pos, level } = layout(s);
   const byChild: Record<string, string[]> = {};
   for (const l of s.links) (byChild[l.child] ||= []).push(l.parent);
 
-  const кривые: string[] = [];
+  const crooked: string[] = [];
   for (const child of Object.keys(byChild)) {
     const ps = byChild[child];
     const key = ps.slice().sort().join("|");
-    const одинРебёнок = Object.keys(byChild).filter((c) => byChild[c].slice().sort().join("|") === key).length === 1;
-    if (!одинРебёнок) continue;
-    // если у кого-то из родителей есть вторая семья, два единственных ребёнка
-    // тянут в разные стороны — оба отвесно встать не могут
-    const делятРодителя = ps.some((p) =>
+    const onlyChild = Object.keys(byChild).filter((c) => byChild[c].slice().sort().join("|") === key).length === 1;
+    if (!onlyChild) continue;
+    // if either parent has a second family, two only children pull in opposite
+    // directions — they cannot both stand vertically
+    const shareParent = ps.some((p) =>
       Object.keys(byChild).some((c) => byChild[c].includes(p) && byChild[c].slice().sort().join("|") !== key),
     );
-    if (делятРодителя) continue;
-    const середина = ps.reduce((sum, p) => sum + pos[p].x, 0) / ps.length;
-    if (Math.abs(середина - pos[child].x) > 1) {
-      кривые.push(s.people[child].name + " сдвинут на " + Math.round(Math.abs(середина - pos[child].x)) + " px");
+    if (shareParent) continue;
+    const middle = ps.reduce((sum, p) => sum + pos[p].x, 0) / ps.length;
+    if (Math.abs(middle - pos[child].x) > 1) {
+      crooked.push(s.people[child].name + " is off by " + Math.round(Math.abs(middle - pos[child].x)) + " px");
     }
   }
-  assert.deepEqual(кривые, []);
+  assert.deepEqual(crooked, []);
   assert.ok(Object.keys(level).length > 0);
 });
 
-test("стрелки к детям никогда не идут наискось", () => {
+test("the arrows to children never run at a slant", () => {
   const s = real();
   const { pos, level } = layout(s);
   for (const it of computeEdges(s, pos, level, null)) {
@@ -270,73 +270,73 @@ test("стрелки к детям никогда не идут наискось
       const b = pts[i];
       assert.ok(
         Math.abs(a.x - b.x) < 0.6 || Math.abs(a.y - b.y) < 0.6,
-        "отрезок не горизонтальный и не вертикальный: " + JSON.stringify([a, b]),
+        "the segment is neither horizontal nor vertical: " + JSON.stringify([a, b]),
       );
     }
   }
 });
 
-test("остров без связей с древом встаёт в ряд по году рождения, а не в шапку", () => {
-  // основное древо: три поколения с датами
+test("an island with no links to the tree lands in a row by year of birth, not at the head", () => {
+  // the main tree: three generations with dates
   const s = normalize({});
-  const дед = addPerson(s, { name: "Пётр Иванович Старший", born: "1900" });
-  const бабка = addPerson(s, { name: "Анна Петровна Старшая", born: "1902" });
-  const отец = addPerson(s, { name: "Иван Петрович Средний", born: "1930" });
-  const внук = addPerson(s, { name: "Пётр Иванович Младший", born: "1960" });
-  link(s, дед, отец);
-  link(s, бабка, отец);
-  link(s, отец, внук);
-  // остров: отец 1958 года и его сын 1990-го, ни с кем не связаны
-  const чужой = addPerson(s, { name: "Артём Александрович Гость", born: "1958" });
-  const сын = addPerson(s, { name: "Макар Артёмович Гость", born: "1990" });
-  link(s, чужой, сын);
+  const grandad = addPerson(s, { name: "Пётр Иванович Старший", born: "1900" });
+  const grandma = addPerson(s, { name: "Анна Петровна Старшая", born: "1902" });
+  const father = addPerson(s, { name: "Иван Петрович Средний", born: "1930" });
+  const grandson = addPerson(s, { name: "Пётр Иванович Младший", born: "1960" });
+  link(s, grandad, father);
+  link(s, grandma, father);
+  link(s, father, grandson);
+  // the island: a father born in 1958 and his son born in 1990, linked to nobody
+  const outsider = addPerson(s, { name: "Артём Александрович Гость", born: "1958" });
+  const son = addPerson(s, { name: "Макар Артёмович Гость", born: "1990" });
+  link(s, outsider, son);
 
   const { level } = layout(s);
-  assert.equal(level[чужой], level[внук], "1958-й — ряд внука (1960)");
-  assert.equal(level[сын], level[внук] + 1, "а его сын — рядом ниже");
-  assert.ok(level[дед] === 0 && level[отец] === 1, "основное древо не сдвинулось");
+  assert.equal(level[outsider], level[grandson], "1958 is the grandson's row (1960)");
+  assert.equal(level[son], level[grandson] + 1, "and his son one row below");
+  assert.ok(level[grandad] === 0 && level[father] === 1, "the main tree did not shift");
 });
 
-test("остров без единой даты остаётся в шапке", () => {
+test("an island without a single date stays at the head", () => {
   const s = normalize({});
-  const дед = addPerson(s, { name: "Пётр Иванович Старший", born: "1900" });
-  const отец = addPerson(s, { name: "Иван Петрович Средний", born: "1930" });
-  link(s, дед, отец);
-  const чужой = addPerson(s, { name: "Некто Безымянный" });
-  const сын = addPerson(s, { name: "Сын Безымянный" });
-  link(s, чужой, сын);
+  const grandad = addPerson(s, { name: "Пётр Иванович Старший", born: "1900" });
+  const father = addPerson(s, { name: "Иван Петрович Средний", born: "1930" });
+  link(s, grandad, father);
+  const outsider = addPerson(s, { name: "Некто Безымянный" });
+  const son = addPerson(s, { name: "Сын Безымянный" });
+  link(s, outsider, son);
   const { level } = layout(s);
-  assert.equal(level[чужой], 0);
-  assert.equal(level[сын], 1);
+  assert.equal(level[outsider], 0);
+  assert.equal(level[son], 1);
 });
 
-test("сестру увёл вниз брак её дочери — брат и сестра едут за ней, родители над всеми троими", () => {
+test("a sister was carried down by her daughter's marriage — her siblings move with her, the parents above all three", () => {
   const s = normalize({});
-  const мать = addPerson(s, { name: "Татьяна Лузина" });
-  const отец = addPerson(s, { name: "Валерий Лузин" });
-  const анна = addPerson(s, { name: "Анна Валерьевна" });
-  const сергей = addPerson(s, { name: "Сергей Валерьевич" });
-  const мария = addPerson(s, { name: "Мария Валерьевна" });
-  for (const c of [анна, сергей, мария]) {
-    link(s, мать, c);
-    link(s, отец, c);
+  const mother = addPerson(s, { name: "Татьяна Лузина" });
+  const father = addPerson(s, { name: "Валерий Лузин" });
+  const anna = addPerson(s, { name: "Анна Валерьевна" });
+  const sergey = addPerson(s, { name: "Сергей Валерьевич" });
+  const maria = addPerson(s, { name: "Мария Валерьевна" });
+  for (const c of [anna, sergey, maria]) {
+    link(s, mother, c);
+    link(s, father, c);
   }
-  const дочь = addPerson(s, { name: "Анастасия Александровна" });
-  link(s, анна, дочь);
-  // глубокая ветка: пять поколений, младший женится на дочери Анны
-  let верх = addPerson(s, { name: "Пращур" });
+  const daughter = addPerson(s, { name: "Анастасия Александровна" });
+  link(s, anna, daughter);
+  // a deep branch: five generations, the youngest marries Anna's daughter
+  let top = addPerson(s, { name: "Пращур" });
   for (let i = 0; i < 4; i++) {
     const next = addPerson(s, { name: "Потомок " + i });
-    link(s, верх, next);
-    верх = next;
+    link(s, top, next);
+    top = next;
   }
-  addPair(s, верх, дочь);
+  addPair(s, top, daughter);
 
   const { level } = layout(s);
-  assert.equal(level[анна], level[сергей], "брат в ряду сестры");
-  assert.equal(level[анна], level[мария], "и вторая сестра тоже");
-  assert.equal(level[мать], level[анна] - 1, "родители ровно на ряд выше");
-  assert.equal(level[отец], level[анна] - 1);
-  assert.equal(level[дочь], level[анна] + 1);
-  assert.equal(level[дочь], level[верх], "супруги вровень");
+  assert.equal(level[anna], level[sergey], "the brother is in his sister's row");
+  assert.equal(level[anna], level[maria], "and the second sister too");
+  assert.equal(level[mother], level[anna] - 1, "the parents exactly one row above");
+  assert.equal(level[father], level[anna] - 1);
+  assert.equal(level[daughter], level[anna] + 1);
+  assert.equal(level[daughter], level[top], "the spouses are level");
 });

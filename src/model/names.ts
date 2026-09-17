@@ -8,16 +8,16 @@ export const norm = (s: string): string =>
     .trim();
 
 /**
- * Строгие формы имени — по ним решаем, один это человек или разные.
- * Голой фамилии здесь нет намеренно: у двух сестёр одна девичья фамилия,
- * и по ней они склеивались в одного человека.
+ * Strict forms of a name — we decide by them whether this is one person or two
+ * different ones. The bare surname is deliberately absent here: two sisters share a
+ * maiden name, and it used to glue them into a single person.
  */
 export function nameForms(p: Pick<Person, "name" | "maiden" | "alt">): string[] {
   const out = [norm(p.name)];
   const head = p.name.split(" ").slice(0, -1).join(" ");
   const sub = (variant: string) => {
     if (!variant) return;
-    // фамилию подставляем в то же имя-отчество, а не сравниваем саму по себе
+    // we substitute the surname into the same given name and patronymic rather than comparing it on its own
     if (variant.indexOf(" ") > -1 || !head) out.push(norm(variant));
     else out.push(norm(head + " " + variant));
   };
@@ -26,7 +26,7 @@ export function nameForms(p: Pick<Person, "name" | "maiden" | "alt">): string[] 
   return out;
 }
 
-/** Свободные формы — для поиска по панели, тут голая фамилия уместна. */
+/** Loose forms — for the sidebar search, where a bare surname is appropriate. */
 export function allNames(p: Pick<Person, "name" | "maiden" | "alt">): string[] {
   return nameForms(p).concat(
     [p.maiden]
@@ -69,9 +69,9 @@ const ROLES: Record<string, Sex> = {
 };
 
 /**
- * Пол по отчеству, фамилии, окончанию имени и словам-ролям.
- * Каждое слово проверяется отдельно с якорем `$`: `\b` в JS считает границей
- * только `[A-Za-z0-9_]`, поэтому по кириллице он не срабатывает.
+ * Sex from the patronymic, the surname, the ending of the given name and the role
+ * words. Every word is checked separately with a `$` anchor: `\b` in JS treats only
+ * `[A-Za-z0-9_]` as a boundary, so it never fires on Cyrillic.
  */
 export function guessSex(name: string): Sex {
   const parts = norm(name).split(" ").filter(Boolean).filter((w) => w !== "я");
@@ -80,7 +80,7 @@ export function guessSex(name: string): Sex {
   for (const w of parts) if (ROLES[w]) return ROLES[w];
 
   for (const w of parts) {
-    // отчество надёжнее всего
+    // the patronymic is the most reliable of all
     if (/(ович|евич|ьич|иич|ич)$/.test(w) && w.length > 4) return "m";
     if (/(овна|евна|ична|инична)$/.test(w)) return "f";
   }
@@ -98,14 +98,14 @@ export function guessSex(name: string): Sex {
   return "m";
 }
 
-/** Цвет знака: синий у мужчин, розовый у женщин — привычная пара. */
+/** The mark's colour: blue for men, pink for women — the familiar pair. */
 export const colorOf = (sex: Sex): string =>
   sex === "f" ? "#B05C82" : sex === "m" ? "#3A6EA5" : "#8593A2";
 
-/** Заливка жетона — сильно разбавленный тот же цвет. */
+/** The chip's fill — the same colour, heavily diluted. */
 export const tintOf = (sex: Sex): string =>
   sex === "f" ? "#F7E1EA" : sex === "m" ? "#DEE9F6" : "#ECEFF3";
 
-/** Знак в жетоне. U+FE0E — чтобы система не подменила его цветным эмодзи. */
+/** The mark inside the chip. U+FE0E keeps the system from swapping it for a colour emoji. */
 export const markOf = (sex: Sex): string =>
   sex === "f" ? "\u2640\uFE0E" : sex === "m" ? "\u2642\uFE0E" : "?";

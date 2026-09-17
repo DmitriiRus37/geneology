@@ -6,12 +6,13 @@ import { computeEdges } from "./edges.ts";
 import { layout } from "./layout.ts";
 
 /**
- * Узел с реального древа: семья с тремя детьми и пара с одним ребёнком делят полосу
- * между рядами. Исток пары попал внутрь размаха шины первой семьи, а спуск к третьему
- * ребёнку — внутрь размаха шины пары. Если шину пары уложить ниже — два пересечения,
- * если выше — ни одного. Карточки приколочены, чтобы не зависеть от раскладки.
+ * A knot from a real tree: a family with three children and a couple with one child share
+ * the band between the rows. The couple's source fell inside the span of the first
+ * family's bus, and the descent to the third child fell inside the span of the couple's
+ * bus. Lay the couple's bus lower and there are two crossings; lay it higher and there
+ * are none. The cards are pinned so as not to depend on the layout.
  */
-test("шина, чей исток внутри чужого размаха, ложится выше чужой", () => {
+test("a bus whose source is inside another's span lies above that other one", () => {
   const s = normalize({});
   const E = addPerson(s, { name: "Елена Ивановна", sex: "f" });
   const e1 = addPerson(s, { name: "Анна Валерьевна", sex: "f" });
@@ -30,7 +31,7 @@ test("шина, чей исток внутри чужого размаха, ло
   pin(E, 300, 0);
   pin(e1, 0, 200);
   pin(e2, 260, 200);
-  pin(e3, 900, 200); // третий ребёнок ушёл вправо, под пару
+  pin(e3, 900, 200); // the third child went off to the right, under the couple
   pin(R, 700, 0);
   pin(St, 926, 0);
   pin(m, 1300, 200);
@@ -44,16 +45,16 @@ test("шина, чей исток внутри чужого размаха, ло
     y2: pos[id].y + pos[id].h,
   }));
   const st = edgeStats(items, rects);
-  assert.equal(st.crossings, 0, "спуск пары не режет шину семьи, спуск к Екатерине не режет шину пары");
+  assert.equal(st.crossings, 0, "the couple's descent does not cut the family's bus, and the descent to the third child does not cut the couple's");
   assert.equal(st.through, 0);
-  assert.equal(st.busNear, 0, "шины разведены не ближе 12 px");
+  assert.equal(st.busNear, 0, "the buses are kept no closer than 12 px apart");
 
-  // и именно так: шина пары выше шины семьи
+  // and in exactly this way: the couple's bus above the family's
   const busY = (child: string): number => {
     const it = items.find((i) => i.kind === "path" && i.ref?.kind === "child" && i.ref.child === child);
     assert.ok(it && it.kind === "path");
     const hor = it.pts.filter((p, i) => i > 0 && Math.abs(p.y - it.pts[i - 1].y) < 0.6);
     return hor[0].y;
   };
-  assert.ok(busY(m) < busY(e3), "шина Раисы и Степана легла выше шины Елены");
+  assert.ok(busY(m) < busY(e3), "the couple's bus lies above the family's");
 });

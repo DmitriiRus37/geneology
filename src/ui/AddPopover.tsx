@@ -8,7 +8,7 @@ import { DateField, PersonLine, Seg, useDismiss } from "./bits.tsx";
 import { useApp } from "./ctx.ts";
 
 export interface PopSpot {
-  /** координаты внутри холста */
+  /** coordinates inside the canvas */
   x: number;
   y: number;
   mode: Relation | null;
@@ -30,7 +30,7 @@ const TITLE: Record<Relation, string> = {
   sibling: "pop.forSibling",
 };
 
-/** Пол: по умолчанию угадывается по имени, но можно указать сразу. */
+/** Sex: guessed from the name by default, but it can be stated outright. */
 const SEX: { v: Sex | "auto"; t: string }[] = [
   { v: "auto", t: "pop.sexAuto" },
   { v: "m", t: "pop.male" },
@@ -60,8 +60,8 @@ export function AddPopover({ spot, people, onCreate, onExisting, onClose }: Prop
     input.current?.focus();
   }, []);
 
-  // Escape ловит поле ввода — ему надо ещё и остановить всплытие, чтобы холст
-  // не снял заодно выделение; поэтому здесь только щелчок мимо окна.
+  // The input field catches Escape — it also has to stop the bubbling so the canvas
+  // does not clear the selection along with it; hence only the outside click here.
   useDismiss(box, onClose, false);
 
   const found = useMemo(() => {
@@ -78,8 +78,8 @@ export function AddPopover({ spot, people, onCreate, onExisting, onClose }: Prop
     return q ? found.find((id) => norm(people[id].name) === q) ?? null : null;
   }, [found, people, text]);
 
-  // «Добавить» и Enter всегда создают нового человека — тёзка это или нет.
-  // Существующего связывает только явный выбор из списка: щелчок или стрелки с Enter.
+  // "Add" and Enter always create a new person, namesake or not. Only an explicit
+  // pick from the list links an existing one: a click, or the arrow keys with Enter.
   const submit = () => {
     if (cursor >= 0 && found[cursor]) {
       onExisting(found[cursor], mode);
@@ -98,7 +98,7 @@ export function AddPopover({ spot, people, onCreate, onExisting, onClose }: Prop
     );
   };
 
-  /** Enter в любом поле — добавить, Escape — закрыть. */
+  /** Enter in any field adds, Escape closes. */
   const keys = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();

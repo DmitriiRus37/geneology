@@ -35,7 +35,7 @@ body {
   width: 100%;
 }
 
-/* ---------- боковая панель ---------- */
+/* ---------- the side panel ---------- */
 #rail {
   width: 330px;
   flex: 0 0 330px;
@@ -157,7 +157,7 @@ textarea:focus-visible {
   max-height: 34vh;
   overflow-y: auto;
 }
-/* знак пола: список людей, подсказки, родня в карточке */
+/* the sex mark: the list of people, the hints, the kin in a card */
 .dot {
   width: 7px;
   height: 7px;
@@ -291,6 +291,11 @@ textarea:focus-visible {
   content: "● ";
   color: var(--brass);
 }
+/* in server memory: never reached the disk, take it away as an archive */
+.where.mem:before {
+  content: "● ";
+  color: var(--brass);
+}
 .where.stuck {
   color: #e9a79f;
 }
@@ -307,7 +312,7 @@ textarea:focus-visible {
   gap: 4px;
 }
 
-/* ---------- холст ---------- */
+/* ---------- the canvas ---------- */
 #board {
   position: relative;
   flex: 1;
@@ -449,7 +454,7 @@ svg#tree.picking {
   fill: var(--brass);
 }
 
-/* ---------- стрелки добавления у выбранной карточки ---------- */
+/* ---------- the add arrows by the selected card ---------- */
 .handle {
   cursor: pointer;
 }
@@ -650,7 +655,7 @@ svg#tree.picking {
   opacity: 1;
 }
 
-/* ---------- всплывающее окно добавления ---------- */
+/* ---------- the add popover ---------- */
 .pop {
   position: absolute;
   z-index: 6;
@@ -802,7 +807,7 @@ svg#tree.picking {
   }
 }
 
-/* скрытые (срезанные вверх) люди в списке */
+/* hidden (cut off upwards) people in the list */
 #people li.hid {
   opacity: 0.5;
 }
@@ -811,12 +816,12 @@ svg#tree.picking {
   text-decoration-color: #9AA7B4;
 }
 
-/* пунктирное родство: брат и сестра без общих записанных родителей */
+/* a dashed kinship: siblings with no shared parents recorded */
 .link.sib {
   stroke-dasharray: 5 4;
 }
 
-/* переключатель языка — слева внизу боковой панели */
+/* the language switch, bottom left of the side panel */
 .rail-foot .seg.langs {
   flex: 0 0 auto;
   margin-right: auto;
@@ -829,7 +834,7 @@ svg#tree.picking {
   letter-spacing: 0.04em;
 }
 
-/* окно добавления: даты в одну строку, пол — компактно */
+/* the add popover: the dates on one line, the sex compact */
 .pop .row.dates {
   display: flex;
   gap: 6px;

@@ -5,7 +5,7 @@ interface Props {
   onZoom: (f: number) => void;
 }
 
-/** Панель на холсте: режим, просвет, масштаб. Добавление — одной кнопкой в боковой панели. */
+/** The bar on the canvas: mode, gap, zoom. Adding lives on one button in the side panel. */
 export function Toolbar({ onFit, onZoom }: Props) {
   const { s, d, t } = useApp();
   const hidden = s.tree.hidden.length;

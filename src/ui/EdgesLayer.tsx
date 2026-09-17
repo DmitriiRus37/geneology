@@ -7,7 +7,7 @@ export const EdgesLayer = memo(function EdgesLayer({ items }: { items: EdgeItem[
       {items.map((it, i) =>
         it.kind === "path" ? (
           <g key={i}>
-            {/* по тонкой линии не попасть: рядом лежит широкая прозрачная копия */}
+            {/* a thin line is impossible to hit: a wide transparent copy lies alongside */}
             {it.ref && <path className="hit" d={it.d} data-edge={i} />}
             <path
               className={"link" + (it.hot ? " hot" : "") + (it.dashed ? " sib" : "")}

@@ -43,14 +43,14 @@ export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
 
   const kin = kinOf(s.tree, p.id, lang);
 
-  /** Как убрать связь именно с этим человеком: их может быть и несколько. */
+  /** How to remove the link with this particular person: there may well be several. */
   const cutOf = (k: KinRow): (() => void) | null => {
     const who = k.id;
     if (parents.indexOf(who) > -1) return () => d({ type: "cut", parent: who, child: p.id });
     if (kids.indexOf(who) > -1) return () => d({ type: "cut", parent: p.id, child: who });
     if (spouses.indexOf(who) > -1) return () => d({ type: "unlinkPartner", a: p.id, b: who });
     if (k.explicit) return () => d({ type: "unlinkSibling", a: p.id, b: who });
-    return null; // брат через общих родителей: убирать надо связь с родителями
+    return null; // a sibling through shared parents: it is the link to the parents that must go
   };
 
   return (

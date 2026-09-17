@@ -1,26 +1,29 @@
 /**
- * Расстановка карточек по x при уже известном порядке в рядах.
+ * Placing cards along x once the order within the rows is already known.
  *
- * Ряд состоит из блоков — супруги и явные братья с сёстрами стоят одним куском.
- * У блока один владелец: блок выше, где стоят родители того его члена, кто пришёл
- * в ряд ребёнком своей семьи. Так пара «ребёнок + супруг» достаётся одной семье.
- * Блоки без владельца — корни деревьев. Самое большое дерево — основное, остальные
- * — сваты: каждое подвешено к якорю, своему ребёнку, стоящему в блоке чужого дерева
- * (родители жены — над жёной).
+ * A row consists of blocks — spouses and explicit siblings stand as one piece. A
+ * block has a single owner: the block above, where the parents stand of whichever
+ * of its members came into the row as a child of their own family. That way the
+ * "child + spouse" pair falls to one family. Blocks with no owner are the roots of
+ * trees. The largest tree is the main one, the rest are in-laws: each hangs from an
+ * anchor, its own child standing in a block of someone else's tree (the wife's
+ * parents go above the wife).
  *
- * Кладём как Рейнгольд и Тилфорд. Гроздь блока — он сам, грозди его детей и
- * подвешенные к нему сваты. Грозди детей укладываются слева направо вплотную по
- * контуру: в каждом ряду не ближе обычного зазора. Родители встают над серединой
- * своих детей. Сваты укладываются вокруг уже готовой грозди ребёнка, она с места
- * не сходит — так никто ничьё место не занимает ни сверху, ни снизу, и место под
- * потомков не надо угадывать заранее.
+ * We lay it out the Reingold-Tilford way. A block's cluster is the block itself,
+ * the clusters of its children and the in-laws hung from it. The children's
+ * clusters are packed left to right tight against the contour: in every row no
+ * closer than the normal gap. Parents stand over the middle of their children.
+ * In-laws are packed around a child's already finished cluster, which does not move
+ * — that way nobody takes anyone else's place, above or below, and there is no need
+ * to guess in advance how much room the descendants will want.
  *
- * Единственный спор: родители, встав над детьми, налезают на сватов одного из детей
- * (те стоят в том же ряду). При двух и больше детях расступаются дети — между
- * гроздями вставляется зазор, чтобы сваты оказались слева или справа от родителей,
- * что дешевле. У единственного ребёнка отодвигаются сваты: ребёнок ровно под
- * родителями важнее, чем родители жены ровно над ней. Если и это невозможно,
- * отходят сами родители.
+ * The single dispute: parents, having stood over their children, run into the
+ * in-laws of one of those children (who stand in the same row). With two children
+ * or more the children step aside — a gap is inserted between the clusters so that
+ * the in-laws end up to the left or to the right of the parents, whichever is
+ * cheaper. With an only child the in-laws are moved instead: the child exactly
+ * under its parents matters more than the wife's parents exactly over her. If even
+ * that is impossible, the parents themselves step away.
  */
 import { extent, mean } from "../util.ts";
 import type { Gaps, Graph, Union, Unions } from "./layout.ts";
@@ -30,7 +33,7 @@ export interface PlaceCtx {
   g: Graph;
   u: Unions;
   level: Record<string, number>;
-  /** кто пришёл в ряд ребёнком своей семьи — по нему выбирается владелец блока */
+  /** who came into the row as a child of their own family — the block's owner is chosen by them */
   asChild: Set<string>;
   gaps: Gaps;
 }
@@ -38,27 +41,27 @@ export interface PlaceCtx {
 interface Blk {
   l: number;
   ids: string[];
-  /** зазор между карточками блока: малый, у матери с двумя мужьями — до обычного */
+  /** the gap between the block's cards: small, and up to normal for a mother with two husbands */
   gap: number;
-  /** ширина: карточки и зазоры между ними */
+  /** width: the cards and the gaps between them */
   w: number;
-  /** центр */
+  /** centre */
   x: number;
   owner: Blk | null;
-  /** дети-блоки: свои и якорь подвешенного дерева сватов; в порядке ряда */
+  /** child blocks: its own, plus the anchor of a hung in-law tree; in row order */
   kids: Blk[];
-  /** корни деревьев сватов, подвешенных к этому блоку */
+  /** the roots of the in-law trees hung from this block */
   hung: Blk[];
   tree: number;
-  /** вся гроздь: сам блок, грозди детей, подвешенные сваты */
+  /** the whole cluster: the block itself, the children's clusters, the hung in-laws */
   sub: Blk[];
-  /** гроздь уложена и стоит: вокруг неё укладываются сваты */
+  /** the cluster is packed and standing: the in-laws are packed around it */
   fixed: boolean;
-  /** место в ряду, для порядка детей */
+  /** the place in the row, for ordering the children */
   key: number;
 }
 
-/** Контур грозди: по каждому ряду левый и правый края. */
+/** A cluster's contour: the left and right edges for each row. */
 interface Cont {
   L: number[];
   R: number[];
@@ -82,7 +85,7 @@ const shiftCont = (c: Cont, d: number): void => {
   }
 };
 
-/** На сколько сдвинуть гроздь `k` вправо, чтобы она встала вплотную справа от `acc`. */
+/** How far to shift cluster `k` right so it stands tight to the right of `acc`. */
 const sep = (acc: Cont, k: Cont, gap: number): number => {
   let d = -Infinity;
   for (let r = 0; r < acc.L.length; r++) {
@@ -90,7 +93,7 @@ const sep = (acc: Cont, k: Cont, gap: number): number => {
     d = Math.max(d, acc.R[r] + gap - k.L[r]);
   }
   if (d !== -Infinity) return d;
-  // общих рядов нет — ставим правее всего, что есть
+  // no rows in common — put it to the right of everything there is
   const accR = Math.max(...acc.R);
   const kL = Math.min(...k.L);
   return accR === -Infinity || kL === Infinity ? 0 : accR + gap - kL;
@@ -98,18 +101,18 @@ const sep = (acc: Cont, k: Cont, gap: number): number => {
 
 const widthOf = (c: Cont): number => Math.max(...c.R) - Math.min(...c.L);
 
-/** Ходы, за которые спор родителей со сватами должен решиться. */
+/** The moves within which the parents' dispute with the in-laws must be settled. */
 const ROUNDS = 40;
 
 /**
- * Возвращает x центра каждой карточки компоненты; левый край не нормирован.
- * `rows[l]` — порядок ряда l, все ряды древа (пустые тоже).
+ * Returns the x of the centre of every card in the component; the left edge is not
+ * normalised. `rows[l]` is the order of row l, all rows of the tree (empty ones too).
  */
 export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, number> {
   const { g, u, asChild, gaps } = ctx;
   const nRows = rows.length;
 
-  // блоки
+  // blocks
   const blocks: Blk[] = [];
   const blockOf = new Map<string, Blk>();
   rows.forEach((row, l) => {
@@ -147,7 +150,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
     return b.x + cardOff(b, id);
   };
 
-  // владельцы
+  // owners
   const parentBlock = (id: string, l: number): Blk | null => {
     for (const p of g.parents[id]) {
       const pb = blockOf.get(p);
@@ -162,7 +165,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
     b.owner?.kids.push(b);
   }
 
-  // деревья
+  // trees
   const roots = blocks.filter((b) => !b.owner);
   roots.forEach((r, t) => {
     const stack = [r];
@@ -177,9 +180,9 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
   let main = 0;
   for (let t = 1; t < roots.length; t++) if (size[t] > size[main]) main = t;
 
-  // Якоря: ребёнок человека из дерева t, стоящий в блоке другого дерева. Дерево
-  // подвешивается к первому якорю в уже подвешенном дереве; кольцо сватовства
-  // разрывается по размеру — такое дерево встаёт рядом с основным само по себе.
+  // Anchors: a child of someone from tree t, standing in a block of another tree.
+  // A tree is hung from the first anchor inside an already hung tree; a ring of
+  // in-laws is broken by size — such a tree stands next to the main one on its own.
   const cands: { C: Blk; P: Blk }[][] = roots.map(() => []);
   for (const P of blocks) {
     for (const id of P.ids) {
@@ -193,7 +196,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
   const attached = roots.map((_, t) => t === main);
   const hungAt = new Map<number, Blk>();
   const free: Blk[] = [];
-  /** у блока на пути от корня сватов к якорю — тот ребёнок, в чьей грозди стоит якорь */
+  /** for a block on the way from the in-law root to the anchor — the child in whose cluster the anchor stands */
   const pinnedKid = new Map<Blk, Blk>();
   for (let remaining = roots.length - 1; remaining > 0; remaining--) {
     let pick = -1;
@@ -220,16 +223,17 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
     }
   }
   for (const b of blocks) b.kids.sort((p, q) => p.key - q.key || p.l - q.l);
-  /** блоки на пути от корня сватов к якорю (и сам якорь): их гроздь с места не сдвинуть */
+  /** blocks on the way from the in-law root to the anchor (and the anchor itself): their cluster cannot be moved */
   const pinnedSet = new Set(pinnedKid.values());
 
-  // укладка
+  // packing
   /**
-   * Сваты, которых родители отодвинули от их ребёнка: центр блока не левее (dir 1)
-   * или не правее (dir −1) точки, заданной относительно якоря их дерева. Обычный
-   * блок отодвигается при укладке у своего родителя — вместе со своей гроздью и
-   * не налезая на соседей; блок на пути к якорю и корень дерева — сами по себе,
-   * когда встают над детьми: их грозди с места не сдвинуть.
+   * In-laws that the parents pushed away from their child: the block's centre is
+   * no further left (dir 1) or no further right (dir −1) than a point given
+   * relative to their tree's anchor. An ordinary block is pushed while being packed
+   * at its own parent — together with its cluster and without running into its
+   * neighbours; a block on the way to the anchor, and the root of a tree, are moved
+   * on their own, as they stand over their children: their clusters cannot be moved.
    */
   const constraints = new Map<Blk, { anchor: Blk; off: number; dir: 1 | -1 }>();
   const limitOf = (K: Blk): { at: number; dir: 1 | -1 } | null => {
@@ -251,8 +255,8 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
     const pinned = pinnedKid.get(B) ?? null;
 
     /**
-     * Уложить детей в этом порядке, встать над ними и решить споры со сватами.
-     * Возвращает, удалось ли соблюсти все ограничения на детей.
+     * Pack the children in this order, stand over them and settle the disputes with
+     * the in-laws. Returns whether every constraint on the children was met.
      */
     const arrange = (order: Blk[]): boolean => {
       const extra = order.map(() => 0);
@@ -262,7 +266,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
         const packed: Blk[] = [];
         let afterPin = false;
         ok = true;
-        /** сдвинуть уже уложенных: якорь стоит, ограничения «не левее» у них могут нарушиться */
+        /** shift those already packed: the anchor stands still, so their "no further left" constraints may break */
         const shiftPacked = (d: number): void => {
           for (const P of packed) shift(P.sub, d);
           shiftCont(acc, d);
@@ -276,14 +280,14 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
           if (!packed.length) {
             if (lim && (lim.dir > 0 ? K.x < lim.at : K.x > lim.at)) shift(K.sub, lim.at - K.x);
           } else if (K === pinned) {
-            // якорь с места не сходит — подвинем уложенных до него
+            // the anchor does not move — so we shift those packed before it
             shiftPacked(-sep(acc, contOf(K.sub), gaps.h + extra[i]));
             if (!packed.every(holds)) ok = false;
           } else {
             let d = sep(acc, contOf(K.sub), gaps.h + extra[i]);
             if (lim && lim.dir > 0) d = Math.max(d, lim.at - K.x);
             if (lim && lim.dir < 0 && K.x + d > lim.at) {
-              // «не правее»: отодвигаем всех уложенных влево; за якорем это невозможно
+              // "no further right": push everyone packed to the left; past the anchor that is impossible
               if (afterPin) ok = false;
               else shiftPacked(lim.at - (K.x + d));
             }
@@ -295,9 +299,9 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
         });
       };
       const center = (): void => {
-        // Семьи блока, чьи дети стоят в детских блоках. Первой — та, что ровно под
-        // своими родителями: полная пара раньше одного из супругов, меньше детей
-        // раньше большего.
+        // The block's families whose children stand in the child blocks. First comes
+        // the one exactly under its own parents: a full couple before a single
+        // spouse, fewer children before more.
         type Fam = { idx: number; mid: number; np: number; n: number };
         const fams: Fam[] = [];
         const seen = new Set<Union>();
@@ -313,11 +317,12 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
           }
         }
         fams.sort((p, q) => q.np - p.np || p.n - q.n);
-        // Вторая семья блока тоже встанет ровно, если раздвинуть его карточки: у матери
-        // с двумя мужьями оба ребёнка отвесно, когда мужья стоят от неё на обычном
-        // зазоре, а не на малом. Раздвигаем все зазоры поровну — но только если так
-        // ровно встанут обе семьи и зазор не больше обычного: пара должна читаться как
-        // пара, а ради половины поправки её растягивать не стоит.
+        // The block's second family will stand straight too if its cards are spread
+        // apart: for a mother with two husbands both children hang vertically once
+        // the husbands stand a normal gap away from her rather than a small one. We
+        // spread every gap equally — but only if both families come out straight
+        // that way and the gap is no wider than normal: a couple must read as a
+        // couple, and stretching it for half a fix is not worth it.
         let gap = gaps.couple;
         if (fams.length >= 2 && Math.abs(fams[1].idx - fams[0].idx) > 1e-6) {
           const need = (fams[1].mid - fams[0].mid) / (fams[1].idx - fams[0].idx) - NODE_W;
@@ -328,7 +333,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
         const lim = !B.owner || pinnedSet.has(B) ? limitOf(B) : null;
         if (lim) B.x = lim.dir > 0 ? Math.max(B.x, lim.at) : Math.min(B.x, lim.at);
       };
-      /** насколько блок U из грозди ребёнка налез на B (с зазором); ≤ 0 — не налез */
+      /** by how much block U from a child's cluster runs into B (gap included); <= 0 — it does not */
       const depth = (U: Blk): number => (U.w + B.w) / 2 + gaps.h - Math.abs(U.x - B.x);
       const conflict = (): { U: Blk; j: number } | null => {
         for (let j = 0; j < order.length; j++) {
@@ -336,7 +341,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
         }
         return null;
       };
-      /** ближайшее к нынешнему место в ряду, где блок никого из гроздей детей не задевает */
+      /** the place in the row nearest the current one where the block touches none of the children's clusters */
       const stepAside = (): void => {
         const row = order.flatMap((K) => K.sub).filter((U) => U.l === B.l);
         const from = B.x;
@@ -359,7 +364,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
         const d0 = depth(U);
         const n = order.length - 1;
         let done = false;
-        // расступиться детям: сваты слева от нас или справа — что дешевле
+        // let the children step aside: in-laws to our left or to our right, whichever is cheaper
         if (order.length >= 2) {
           const opts: { i: number; d: number }[] = [];
           if (j < n) opts.push({ i: j + 1, d: 2 * (U.x + U.w / 2 + gaps.h - (B.x - B.w / 2)) });
@@ -378,7 +383,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
             center();
           }
         }
-        // отодвинуть сватов от их ребёнка: гроздь ребёнка укладывается заново
+        // push the in-laws away from their child: the child's cluster is packed again
         if (!done && !order[j].fixed) {
           const anchor = hungAt.get(U.tree);
           if (anchor) {
@@ -399,7 +404,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
             }
           }
         }
-        // отойти самим — на ближайшее свободное место
+        // step away ourselves — to the nearest free place
         if (!done) stepAside();
       }
       if (conflict()) stepAside();
@@ -407,9 +412,9 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
       return ok;
     };
 
-    // Свободные дети сватов вправе встать по любую сторону от якоря: порядок ряда
-    // про них ничего не знает, он сложился обходом. Берём вариант, где гроздь уже;
-    // при равенстве — порядок ряда.
+    // The in-laws' free children may stand on either side of the anchor: the row
+    // order knows nothing about them, it came out of the traversal. We take the
+    // variant with the narrower cluster; on a tie, the row order.
     const freeKids = pinned ? B.kids.filter((K) => K !== pinned) : [];
     const orders: Blk[][] = [B.kids];
     if (pinned && freeKids.length && freeKids.length <= 4) {
@@ -426,10 +431,10 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
       const before = new Map(constraints);
       const ok = arrange(order);
       const width = widthOf(contOf(B.sub));
-      // сначала те, где ограничения соблюдены, среди них — уже
+      // first the ones where the constraints hold, and among those the narrower
       if (!best || (ok && !best.ok) || (ok === best.ok && width < best.width - 0.5)) best = { order, width, ok };
       if (orders.length > 1) {
-        // пробный заход мог отодвинуть сватов внутри грозди ребёнка — возвращаем как было
+        // a trial run may have pushed in-laws inside the child's cluster — put it back
         const changed = [...constraints.keys()].filter((k) => constraints.get(k) !== before.get(k));
         if (changed.length || before.size !== constraints.size) {
           constraints.clear();

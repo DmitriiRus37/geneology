@@ -1,22 +1,23 @@
 /**
- * Счётчики качества линий: пересечения, сближенные горизонтали, линии сквозь
- * карточку. Одна формула и для раскладки (ею выбирается порядок в рядах),
- * и для `tools/metrics.ts` — чтобы числа не расходились.
+ * Counters of line quality: crossings, horizontals too close together, lines through
+ * a card. One formula for the layout (it is what picks the order within rows) and
+ * for `tools/metrics.ts` alike — so that the numbers never diverge.
  */
 import type { EdgeItem, EdgeRef } from "./edges.ts";
 import { hitsCard, type Rect } from "./route.ts";
 
 export interface EdgeStats {
-  /** пересечений «горизонталь × вертикаль» по отдельным путям — как считалось всегда */
+  /** "horizontal x vertical" crossings over individual paths — the way it has always been counted */
   crossings: number;
   /**
-   * То же, но пути одной семьи по одной шине — одна линия. Спуск сквозь шину
-   * семьи из семи детей считается один раз, а не до семи.
+   * The same, but the paths of one family over one bus count as a single line. A
+   * descent through the bus of a family of seven children is counted once, not up
+   * to seven times.
    */
   visual: number;
-  /** пар горизонталей, лежащих ближе 12 px друг к другу и перекрывающихся по x */
+  /** pairs of horizontals lying closer than 12 px to each other and overlapping along x */
   busNear: number;
-  /** линий, задевающих хоть одну карточку */
+  /** lines touching at least one card */
   through: number;
 }
 
@@ -25,9 +26,9 @@ interface Seg {
   y1: number;
   x2: number;
   y2: number;
-  /** номер пути */
+  /** the path's number */
   id: number;
-  /** семья, которой принадлежит линия: по ней склеиваются пути по одной шине */
+  /** the family the line belongs to: paths over one bus are glued together by it */
   fam: string;
 }
 
@@ -45,7 +46,7 @@ export function edgeStats(items: EdgeItem[], rects: Rect[]): EdgeStats {
   const ver: Seg[] = [];
   let through = 0;
   items.forEach((it, n) => {
-    if (it.kind !== "path" || it.ref?.kind === "sibling") return; // пунктир родства не считаем
+    if (it.kind !== "path" || it.ref?.kind === "sibling") return; // the dashed kinship line does not count
     if (hitsCard(it.pts, rects)) through++;
     const fam = famOf(it.ref);
     for (let i = 1; i < it.pts.length; i++) {

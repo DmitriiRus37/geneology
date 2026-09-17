@@ -124,6 +124,44 @@ Node.js, and open it in a browser. The bottom of the side panel always says wher
 means `persons/`, a yellow one means the browser. Move a tree between the two modes with
 "Save to file" and "Open file".
 
+### On a remote machine
+
+The same app can run on a server, in Docker. There it works differently on purpose: the
+tree lives **in the container's memory** and never touches the server's disk. You bring it
+in as a zip archive with **Upload archive**, edit it, and take it away with **Download
+archive**. A restart, a reboot or a deploy leaves a clean slate, so nothing of your family
+stays on a machine you do not own.
+
+```bash
+make check                                   # typecheck and tests
+GENEALOGY_USER=fam GENEALOGY_PASS='secret' make run_local   # try the image here first
+make smoke                                   # check the running instance
+```
+
+Rolling out to the server:
+
+```bash
+PROD_HOST=1.2.3.4 SSHPASS='<root password>' \
+GENEALOGY_USER=fam GENEALOGY_PASS='<tree password>' make deploy
+```
+
+The image is built here and shipped as a tarball; the server only loads it and starts the
+container — it compiles nothing and keeps no toolchain. `GENEALOGY_USER` and
+`GENEALOGY_PASS` guard the service with HTTP Basic auth, and compose refuses to start
+without them, so the tree cannot end up on the open internet unprotected by accident.
+
+Because the tree is in memory, **a deploy wipes it**. Take the archive first and put it
+back afterwards:
+
+```bash
+make backup                                  # writes backups/persons_<date>.zip, keeps five
+```
+
+Two things worth knowing. Basic auth over plain HTTP sends the password in clear text — on
+an untrusted network put TLS in front or reach the service through an SSH tunnel. And the
+local `persons/` folder is never touched by any of this: the remote instance only ever
+holds what has been uploaded to it.
+
 ### Development
 
 ```bash
@@ -174,6 +212,10 @@ src/
   io/         disk.ts talks to the server; JSON save/open, SVG, PNG and PDF export
   data/       family.json, a small sample tree used to seed an empty persons/
 tools/metrics.ts  layout quality metrics
+tools/smoke.mjs   smoke check of a running instance, local or remote
+Dockerfile        the image for a remote machine: build stage, then node and one html
+docker-compose-prod.yml  what runs on the server: one service, no database, no volume
+Makefile          build, ship, logs, backup
 ```
 
 The layout is a pure function `layout(state) → { pos, level, tl, lonePlate }`. Its result
@@ -367,6 +409,43 @@ Node.js, и откройте в браузере. Внизу панели все
 жёлтая — в браузер. Переносить древо между режимами — кнопками «Сохранить в файл» и
 «Открыть файл».
 
+### На удалённой машине
+
+То же приложение умеет работать на сервере, в Docker. Там оно устроено нарочно иначе:
+древо живёт **в памяти контейнера** и до диска сервера не доходит. Вы привозите его
+zip-архивом кнопкой **«Загрузить архив»**, правите и увозите кнопкой **«Скачать архив»**.
+Перезапуск, перезагрузка и выкладка оставляют чистый лист — на чужой машине от вашей семьи
+не остаётся ничего.
+
+```bash
+make check                                   # типы и тесты
+GENEALOGY_USER=fam GENEALOGY_PASS='secret' make run_local   # сперва посмотреть у себя
+make smoke                                   # проверить поднятый экземпляр
+```
+
+Выкладка на сервер:
+
+```bash
+PROD_HOST=1.2.3.4 SSHPASS='<пароль root>' \
+GENEALOGY_USER=fam GENEALOGY_PASS='<пароль к древу>' make deploy
+```
+
+Образ собирается здесь и уезжает тарболом; сервер только загружает его и поднимает
+контейнер — сам он ничего не собирает и инструментов не держит. `GENEALOGY_USER` и
+`GENEALOGY_PASS` закрывают сервис паролем (HTTP Basic), и без них compose просто не
+стартует: древо не окажется в открытом доступе по недосмотру.
+
+Раз древо в памяти, **выкладка его стирает**. Сначала заберите архив, потом верните:
+
+```bash
+make backup                                  # кладёт backups/persons_<дата>.zip, хранит пять
+```
+
+Две вещи, о которых стоит помнить. Пароль при HTTP Basic поверх обычного HTTP идёт
+открытым текстом — в недоверенной сети поставьте впереди TLS или ходите через SSH-туннель.
+И локальная папка `persons/` во всём этом не участвует: на удалённом экземпляре лежит
+только то, что туда загрузили.
+
 ### Разработка
 
 ```bash
@@ -416,6 +495,10 @@ src/
   io/         disk.ts — обмен с сервером; сохранение JSON, выгрузка SVG, PNG и PDF
   data/       family.json — небольшое образцовое древо, им заполняется пустая persons/
 tools/metrics.ts  метрики качества раскладки
+tools/smoke.mjs   проверка поднятого экземпляра, своего или удалённого
+Dockerfile        образ для удалённой машины: стадия сборки, дальше node и один html
+docker-compose-prod.yml  что крутится на сервере: одна служба, без базы и без тома
+Makefile          сборка, выкладка, логи, резервная копия
 ```
 
 Раскладка — чистая функция `layout(state) → { pos, level, tl, lonePlate }`. Её результат

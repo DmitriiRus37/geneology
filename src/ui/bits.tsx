@@ -1,12 +1,12 @@
-/** Мелочи интерфейса, которые нужны сразу в нескольких окнах. */
+/** Small interface pieces needed in several windows at once. */
 import { useEffect, type KeyboardEvent, type RefObject } from "react";
 import { normalizeDateInput, yearTag } from "../model/dates.ts";
 import { colorOf } from "../model/names.ts";
 import type { Person } from "../model/types.ts";
 
 /**
- * Закрыть окошко щелчком мимо него и по Escape. Слушателя вешаем следующим
- * кадром, иначе окно закроется от того же щелчка, которым его открыли.
+ * Close a popover with a click outside it and with Escape. The listener is attached on
+ * the next frame, otherwise the window would close on the very click that opened it.
  */
 export function useDismiss(box: RefObject<HTMLElement | null>, onClose: () => void, onEscape = true): void {
   useEffect(() => {
@@ -27,8 +27,8 @@ export function useDismiss(box: RefObject<HTMLElement | null>, onClose: () => vo
 }
 
 /**
- * Поле даты. На выходе из него голый год превращается в «??.??.1995»: видно,
- * что день и месяц неизвестны, а не забыты.
+ * A date field. On leaving it a bare year turns into "??.??.1995": it is then visible
+ * that the day and the month are unknown rather than forgotten.
  */
 export function DateField({
   value,
@@ -62,7 +62,7 @@ export interface SegOption<T extends string> {
   label: string;
 }
 
-/** Ряд кнопок, из которых нажата одна: пол, язык. */
+/** A row of buttons with one of them pressed: sex, language. */
 export function Seg<T extends string>({
   options,
   value,
@@ -87,7 +87,7 @@ export function Seg<T extends string>({
   );
 }
 
-/** Строка человека в списке: знак пола, имя, годы. */
+/** A person's line in the list: the sex mark, the name, the years. */
 export function PersonLine({ p, tag = yearTag(p) }: { p: Person; tag?: string }) {
   return (
     <>

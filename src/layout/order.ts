@@ -1,19 +1,20 @@
 /**
- * Порядок людей в рядах ради меньшего числа пересечений линий.
+ * The order of people within rows, for the sake of fewer crossing lines.
  *
- * Пересечение шины одной семьи со спуском другой рождается не прокладкой, а тем,
- * кто за кем стоит в ряду: спуск попадает внутрь размаха шины. Поэтому здесь
- * переставляются люди, а линии не трогаются. Кандидаты порядка рождаются
- * барицентром родни в соседних рядах, но оценивается каждый по реальной
- * геометрии: расставили по x той же процедурой, что и всегда, проложили линии,
- * посчитали ту же метрику, что в tools/metrics.ts. Исходный порядок обхода —
- * всегда один из кандидатов, так что хуже него по пересечениям не станет.
+ * One family's bus crossing another family's descent is born not of the routing
+ * but of who stands after whom in the row: the descent falls inside the bus's
+ * span. So it is people that are reordered here, and the lines are left alone.
+ * Candidate orders come from the barycentre of kin in the neighbouring rows, but
+ * each one is judged by real geometry: placed along x by the same procedure as
+ * always, lines routed, the same metric counted as in tools/metrics.ts. The
+ * original traversal order is always one of the candidates, so it can never come
+ * out worse than that on crossings.
  *
- * Что сохраняется: супруги рядом (блок неделим, растянутую пару отбрасываем),
- * у кого две семьи — один супруг слева, другой справа (цепочка либо прямая, либо
- * обратная), братья и сёстры по старшинству, единственный ребёнок под родителями,
- * линии не сквозь карточки, шины не сближаются, древо не шире прежнего больше
- * чем на десятую часть. Без DOM.
+ * What is preserved: spouses side by side (a block is indivisible, a stretched
+ * couple is discarded), whoever has two families keeps one spouse to the left and
+ * the other to the right (the chain is either straight or reversed), siblings by
+ * seniority, an only child under its parents, no line through a card, buses no
+ * closer together, and the tree no more than a tenth wider than before. No DOM.
  */
 import { pairKey, type TreeState } from "../model/types.ts";
 import { extent, mean, push } from "../util.ts";
@@ -22,12 +23,12 @@ import { edgeStats } from "./crossings.ts";
 import { computeEdges } from "./edges.ts";
 import { rectOf, type Box, type Graph, type Unions } from "./layout.ts";
 
-/** Блок — человек с супругами, стоит в ряду одним куском. */
+/** A block — a person with their spouses, standing in the row as one piece. */
 interface Block {
   members: string[];
-  /** барицентр по родне соседнего ряда; null — родни там нет, блок стоит где стоял */
+  /** barycentre over kin in the neighbouring row; null — no kin there, the block stays put */
   bary: number | null;
-  /** где стоит сейчас — устойчивая сортировка */
+  /** where it stands right now — for a stable sort */
   cur: number;
 }
 
@@ -37,9 +38,9 @@ export interface Score {
   visual: number;
   crossings: number;
   width: number;
-  /** единственные дети, съехавшие из-под родителей */
+  /** only children that slid out from under their parents */
   misaligned: Set<string>;
-  /** пары супругов, между которыми зазор больше положенного */
+  /** couples with a wider gap between them than they are due */
   apart: Set<string>;
   through: number;
   busNear: number;
@@ -47,38 +48,39 @@ export interface Score {
 }
 
 export interface UntangleDeps {
-  /** расставить людей по x по заданным порядкам рядов (по компонентам) */
+  /** place people along x for the given row orders (per component) */
   place: (rowsByComp: string[][][]) => void;
   /**
-   * Карточки так, как их увидит пользователь: по поколениям — сама расстановка,
-   * по годам — её копия, пересчитанная по годам рождения.
+   * The cards as the user will see them: by generations it is the placement
+   * itself, by years a copy of it recomputed from years of birth.
    */
   view: () => Record<string, Box>;
   /**
-   * Ширина, до которой древо вправе расти без оглядки: по годам оно уже, чем по
-   * поколениям, и мерить его прирост от собственной узкой базы несправедливо.
+   * The width the tree may grow to without a second thought: by years it is
+   * narrower than by generations, and measuring its growth from its own narrow
+   * base would be unfair.
    */
   widthFloor: number;
   /**
-   * Единственные дети под родителями — строгое обещание раскладки по поколениям:
-   * ни один выровненный не должен съехать. По годам выравнивание и так
-   * приблизительное, там достаточно, чтобы съехавших не стало больше.
+   * Only children under their parents is a strict promise of the generations
+   * layout: not one of the aligned may slide off. By years the alignment is
+   * approximate anyway, and there it is enough that no more of them slide off.
    */
   strictAlign: boolean;
 }
 
-/** Сколько раундов позволить себе: оценка стоит раскладки, на больших древах экономим. */
+/** How many rounds to allow: scoring costs a whole layout, so we economise on big trees. */
 export function roundsFor(people: number): number {
   if (people <= 120) return 3;
   if (people <= 300) return 1;
   return 0;
 }
 
-/** Насколько древо вправе стать шире ради пересечений. */
+/** How much wider the tree may become for the sake of crossings. */
 const WIDEN = 1.1;
 
 /**
- * Возвращает лучший найденный порядок рядов; pos при выходе соответствует ему.
+ * Returns the best row order found; on exit pos matches it.
  */
 export function untangle(
   state: TreeState,
@@ -90,14 +92,14 @@ export function untangle(
   rootedIds: string[],
   deps: UntangleDeps,
   rounds: number,
-  /** ещё порядки, с которых стоит попробовать начать — например, лучший по поколениям */
+  /** further orders worth trying as a start — for example the best one by generations */
   extraStarts: string[][][][] = [],
 ): string[][][] {
   if (rounds <= 0 || !rootedIds.length) return rowsByComp;
 
-  // Смотрим только на пристроенных: непристроенные ещё не расставлены.
+  // We look only at those placed: the unplaced have no position yet.
   const rooted = new Set(rootedIds);
-  // единственные дети: им положено стоять ровно под родителями
+  // only children: they are due to stand exactly under their parents
   const onlyChildren: { child: string; parents: string[] }[] = [];
   for (const un of u.list) {
     if (un.children.length !== 1 || !rooted.has(un.children[0])) continue;
@@ -121,10 +123,10 @@ export function untangle(
       const mid = mean(oc.parents.map((p) => shown[p].x)) as number;
       if (Math.abs(mid - shown[oc.child].x) > 1) misaligned.add(oc.child);
     }
-    // Пара разорвана, если скобку между супругами уже не нарисовать: далеко
-    // или кто-то из их ряда встал между ними — то же условие, что и в edges.ts,
-    // одной функцией на двоих. Супруги на разной высоте (по годам) скобки не
-    // имеют — их не считаем.
+    // A couple is broken when the bracket between the spouses can no longer be
+    // drawn: too far apart, or someone from their row stood between them — the
+    // same condition as in edges.ts, one function serving both. Spouses at
+    // different heights (by years) have no bracket, so they do not count.
     const apart = new Set<string>();
     for (const [a, b] of couples) {
       if (overlapY(shown[a], shown[b]) < 20) continue;
@@ -150,7 +152,7 @@ export function untangle(
     };
   };
 
-  // старшинство: для каждой семьи — её дети одного ряда по порядку рождения
+  // seniority: for every family, its children of one row in order of birth
   const siblingRuns: string[][] = [];
   for (const un of u.list) {
     if (un.children.length < 2) continue;
@@ -159,11 +161,11 @@ export function untangle(
     for (const run of byLevel.values()) if (run.length > 1) siblingRuns.push(run);
   }
 
-  deps.place(rowsByComp); // pos мог остаться от другого порядка — судим исходный по нему самому
+  deps.place(rowsByComp); // pos may be left over from another order — judge the original by itself
   const base = evaluate();
   let best = { rows: rowsByComp, score: base };
 
-  // что было в порядке — должно остаться в порядке; что уже было сломано, не считаем
+  // what was in order must stay in order; what was already broken does not count
   const subset = (a: Set<string>, b: Set<string>): boolean => [...a].every((v) => b.has(v));
   const widthCap = Math.max(base.width, deps.widthFloor) * WIDEN + 1;
   const acceptable = (s: Score): boolean =>
@@ -173,15 +175,16 @@ export function untangle(
     s.busNear <= base.busNear &&
     s.overlaps <= base.overlaps &&
     s.width <= widthCap;
-  // Сначала то, что видно глазом; при равенстве — компактнее; счёт по путям —
-  // последним: спуск сквозь шину трёх детей и сквозь шину одного выглядит одинаково.
+  // First what the eye sees; on a tie, the more compact; the path count last:
+  // a descent through the bus of three children and through the bus of one look
+  // exactly the same.
   const better = (a: Score, b: Score): boolean =>
     a.visual !== b.visual ? a.visual < b.visual
     : Math.abs(a.width - b.width) > 0.5 ? a.width < b.width
     : a.crossings < b.crossings;
 
-  // Порядок, найденный для другой картинки, часто хорош и здесь — пробуем его
-  // как отправную точку, но судим по тем же правилам, что и остальных.
+  // An order found for the other picture is often good here too — we try it as a
+  // starting point, but judge it by the same rules as all the rest.
   for (const start of extraStarts) {
     if (sameRows(start, best.rows)) continue;
     deps.place(start);
@@ -190,10 +193,10 @@ export function untangle(
     if (take) best = { rows: start, score };
   }
 
-  // Каждое направление гоняем до покоя: за один заход ряд переставляется по
-  // старым местам соседей, и сдвинувшийся ряд подтягивает соседний только на
-  // следующем. Каждый промежуточный порядок тоже оценивается — лучший может
-  // оказаться и посреди пути. Раунд начинается с лучшего найденного.
+  // Each direction runs until it settles: in one pass a row is reordered by the
+  // old positions of its neighbours, and a row that moved only pulls the next one
+  // along on the pass after. Every intermediate order is scored too — the best may
+  // well turn up halfway. A round starts from the best found so far.
   const dirs: Dir[] = ["up", "down", "both"];
   for (let round = 0; round < rounds; round++) {
     let cur = best.rows;
@@ -228,7 +231,7 @@ function sameRows(a: string[][][], b: string[][][]): boolean {
   return true;
 }
 
-/** Родня человека в соседних рядах, по которой считается барицентр. */
+/** A person's kin in the neighbouring rows, the ones the barycentre is counted over. */
 function kin(id: string, dir: Dir, g: Graph): string[] {
   if (dir === "down") return g.parents[id];
   if (dir === "up") return g.children[id];
@@ -236,11 +239,11 @@ function kin(id: string, dir: Dir, g: Graph): string[] {
 }
 
 /**
- * Внутри блока каждая связка (супруги, явные брат и сестра) должна стоять
- * вплотную. Обход даёт «сестра, её муж, брат» — муж между братом и сестрой.
- * Если связки образуют цепочку, выстраиваем блок по ней; направление — то, что
- * меньше отличается от нынешнего порядка. Не цепочка (у кого-то три связки) —
- * оставляем как есть.
+ * Inside a block every tie (spouses, explicit siblings) must stand right next to
+ * each other. The traversal gives "sister, her husband, brother" — the husband
+ * between the brother and the sister. If the ties form a chain, we lay the block
+ * out along it; the direction is the one that differs less from the current order.
+ * Not a chain (someone has three ties) — we leave it as it is.
  */
 function chainOrder(members: string[], u: Unions): string[] {
   if (members.length < 3) return members;
@@ -248,14 +251,14 @@ function chainOrder(members: string[], u: Unions): string[] {
   for (const a of members) ties.set(a, members.filter((b) => b !== a && u.isCouple(a, b)));
   let broken = false;
   for (let i = 1; i < members.length; i++) if (!u.isCouple(members[i - 1], members[i])) broken = true;
-  if (!broken) return members; // уже все рядом
+  if (!broken) return members; // they are all adjacent already
   if ([...ties.values()].some((t) => t.length > 2)) return members;
   const ends = members.filter((m) => ties.get(m)!.length === 1);
   if (ends.length !== 2) return members;
   const path = [ends[0]];
   while (path.length < members.length) {
     const next = ties.get(path[path.length - 1])!.find((n) => !path.includes(n));
-    if (!next) return members; // не одна цепочка
+    if (!next) return members; // not a single chain
     path.push(next);
   }
   const index = new Map(members.map((m, i) => [m, i]));
@@ -264,12 +267,12 @@ function chainOrder(members: string[], u: Unions): string[] {
   return shift(back) < shift(path) ? back : path;
 }
 
-/** Ряд с блоками, внутри которых связки стоят вплотную; порядок блоков прежний. */
+/** A row of blocks whose ties stand adjacent inside; the order of blocks is unchanged. */
 export function tidyTies(row: string[], u: Unions): string[] {
   return blocksOf(row, u).flatMap((b) => b.members);
 }
 
-/** Блоки ряда: супруги вместе, внутри — в нынешнем порядке. */
+/** The row's blocks: spouses together, and inside them the current order. */
 function blocksOf(row: string[], u: Unions): Block[] {
   const index = new Map(row.map((id, i) => [id, i]));
   const seen = new Set<string>();
@@ -313,27 +316,29 @@ function reorderRow(
     for (const m of b.members) for (const n of kin(m, dir, g)) xs.push(pos[n].x);
     b.bary = mean(xs);
 
-    // Супруг встаёт со стороны своей родни — той, что сверху: общие дети у пары
-    // одни и те же и сторону не подсказывают, а разница в одну карточку по ним
-    // переворачивала пару и уводила её от родителей. У цепочки из двух семей
-    // допустимы только прямой и обратный порядок — так одна семья остаётся слева,
-    // другая справа.
+    // A spouse stands on the side of their own kin — the kin above: the couple's
+    // shared children are the same for both and suggest no side, while a
+    // one-card difference over them used to flip the couple and lead it away from
+    // its parents. A chain of two families allows only the straight and the
+    // reversed order — that way one family stays on the left and the other on
+    // the right.
     if (b.members.length > 1) {
       const first = mean(g.parents[b.members[0]].map((n) => pos[n].x));
       const last = mean(g.parents[b.members[b.members.length - 1]].map((n) => pos[n].x));
       if (first !== null && last !== null) {
         if (first > last + 0.5) b.members.reverse();
       } else if (first !== null) {
-        if (first > b.cur + 0.5) b.members.reverse(); // родня первого справа — ему направо
+        if (first > b.cur + 0.5) b.members.reverse(); // the first one's kin is on the right — send them right
       } else if (last !== null) {
-        if (last < b.cur - 0.5) b.members.reverse(); // родня последнего слева — ему налево
+        if (last < b.cur - 0.5) b.members.reverse(); // the last one's kin is on the left — send them left
       }
     }
   }
 
-  // У кого в соседнем ряду родни нет, тот остаётся на своём месте: сортировать
-  // его нечем, а собственный x против чужих барицентров уносил такие блоки в конец
-  // ряда. Остальные сортируются по барицентру и занимают свободные места.
+  // Whoever has no kin in the neighbouring row stays where they are: there is
+  // nothing to sort them by, and their own x against other people's barycentres
+  // used to carry such blocks off to the end of the row. The rest are sorted by
+  // barycentre and take the free places.
   const order: (Block | null)[] = blocks.map((b) => (b.bary === null ? b : null));
   const movable = blocks
     .filter((b) => b.bary !== null)
@@ -342,7 +347,7 @@ function reorderRow(
   for (let i = 0; i < order.length; i++) if (!order[i]) order[i] = movable[k++];
   const sorted = order as Block[];
 
-  // старшинство внутри этого ряда: цепочки блоков, которые должны идти слева направо
+  // seniority within this row: chains of blocks that must run left to right
   const chains: Block[][] = [];
   for (const run of siblingRuns) {
     if (!blockOf.has(run[0])) continue;
@@ -352,7 +357,7 @@ function reorderRow(
       const b = blockOf.get(c)!;
       if (chain[chain.length - 1] === b) continue;
       if (chain.includes(b)) {
-        ok = false; // брат и сестра в одном блоке через третьего — порядок не определён
+        ok = false; // siblings in one block through a third — the order is undefined
         break;
       }
       chain.push(b);
@@ -364,9 +369,10 @@ function reorderRow(
 }
 
 /**
- * Блоки братьев и сестёр остаются на местах, которые им дала сортировка, но
- * раздаются по старшинству. Сваты, вставшие между ними, никуда не деваются.
- * Блок с детьми двух семей участвует в двух цепочках — отсюда повторы до покоя.
+ * Sibling blocks stay in the places the sort gave them, but are dealt out by
+ * seniority. In-laws that stood between them do not go anywhere. A block with the
+ * children of two families takes part in two chains — hence the repeats until it
+ * settles.
  */
 function restoreSeniority(order: Block[], chains: Block[][]): Block[] {
   const out = order.slice();

@@ -9,6 +9,15 @@ server (`server.mjs`) that stores one JSON file per person in `persons/`. All do
 layout logic is plain TypeScript with no DOM access, so it runs and is tested directly in
 Node. `README.md` describes the product and the code map (ENG first, then RUS).
 
+`server.mjs` has two stores behind one tree parser. **disk** (default) is the `persons/`
+folder. **memory** (`--store memory`, what the container runs) keeps everything in RAM:
+the tree arrives as a zip on `POST /api/upload`, leaves on `GET /api/download`, and a
+restart wipes it. Zip reading and writing are hand-rolled on `node:zlib` — the server
+still has no dependencies. `GENEALOGY_USER`/`GENEALOGY_PASS` turn on HTTP Basic auth;
+`--host`/`HOST` sets the bind address, still `127.0.0.1` by default. `/api/health` is the
+only route outside the guard. Deployment lives in `Dockerfile`, `docker-compose-prod.yml`,
+`Makefile` and the `deploy` / `backup-tree` skills in `.claude/skills/`.
+
 ## Commands
 
 ```bash
@@ -20,6 +29,16 @@ npm run build        # dist/genealogy.html, a single self-contained page
 npm test             # node --test "src/**/*.test.ts" (keep the quotes)
 npm run typecheck    # tsc --noEmit
 node tools/metrics.ts /path/to/data-copy   # layout quality metrics; `seed` = src/data/family.json
+node tools/smoke.mjs <base-url> [user] [pass]   # smoke-check a running instance
+```
+
+```bash
+make check                                  # typecheck + tests
+make build_docker                           # image for linux/amd64
+make run_local                              # run that image here (needs GENEALOGY_USER/PASS)
+make smoke BASE=<url>                        # check a running instance
+make backup                                 # pull the remote tree into backups/
+PROD_HOST=<ip> SSHPASS=<pw> GENEALOGY_USER=<u> GENEALOGY_PASS=<p> make deploy
 ```
 
 Rebuild `dist/` after changing anything under `src/`: `npm start` serves `dist/`, not the
@@ -36,15 +55,23 @@ sources. Changes to `server.mjs` need a server restart.
   and measure "before" and "after" on the same snapshot.
 - Any bulk change to the data (for example renaming people to "Имя Отчество Фамилия") only
   after the user explicitly says so, after showing the exact list first.
-- Do not commit or push unless asked. `dist/`, `node_modules/`, `.idea/` and `persons/`
-  are ignored on purpose.
+- Do not commit or push unless asked. `dist/`, `node_modules/`, `.idea/`, `persons/`,
+  `.env` and `backups/` are ignored on purpose.
+- The remote instance is a separate copy and holds only what was uploaded to it. Never
+  push `persons/` to a server unless the user explicitly asks for exactly that.
 
 ## Conventions
 
-- Code comments, UI strings, tests and repository docs are in Russian; identifiers are
-  English. Reply to the user in the language they are currently using.
+- Code comments, test names, assertion messages and the strings the server logs and
+  returns are in English, as are identifiers. Russian stays only where it is data: the
+  sample tree in `src/data/`, the person-name fixtures in the tests, the morphology
+  regexes and word lists in `names.ts` / `dates.ts`, the expected RU strings the i18n
+  tests assert on, and both dictionaries in `src/i18n.ts`. `README.md` stays bilingual
+  (ENG first, then RUS). Reply to the user in the language they are currently using.
 - UI text goes through `src/i18n.ts` (`t(lang, key, vars)`); the model returns message keys
   (`Msg`), never rendered strings. Both dictionaries must have the same keys; a test checks it.
+  The server is the exception: it returns plain English error strings, and the UI shows them
+  verbatim as the detail of a message.
 - No runtime dependencies beyond React in the app and none at all in `server.mjs`.
 - `model/` and `layout/` must stay free of DOM access; they are imported by Node tests and
   by `tools/metrics.ts`.

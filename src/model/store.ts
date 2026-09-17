@@ -22,13 +22,13 @@ export type Relation = "child" | "parent" | "spouse" | "sibling";
 export interface AppState {
   tree: TreeState;
   selected: string | null;
-  /** снимки для отмены */
+  /** snapshots for undo */
   history: TreeState[];
-  /** сообщение внизу экрана (ключ словаря); seq нужен, чтобы одинаковое показалось дважды */
+  /** the message at the bottom of the screen (a dictionary key); seq is what makes an identical one show twice */
   notice: { msg: Msg; seq: number } | null;
-  /** растёт, когда раскладку надо вместить в экран заново */
+  /** grows whenever the layout has to be fitted to the screen again */
   fitSeq: number;
-  /** кого подвинуть в поле зрения, не трогая масштаб */
+  /** who to bring into view without touching the zoom */
   focus: { id: string; seq: number } | null;
 }
 
@@ -75,8 +75,8 @@ type EditOut =
   | { ok: true; notice?: Msg; select?: string | null; fit?: boolean; focus?: string };
 
 /**
- * Правка, после которой раскладку надо строить заново: приколотые карточки
- * сбрасываются, иначе новая родня встаёт поверх старых мест.
+ * An edit after which the layout has to be built anew: the pinned cards are released,
+ * otherwise the new kin stand on top of the old places.
  */
 function relink(s: AppState, fn: (draft: TreeState) => EditOut): AppState {
   return edit(s, (d) => {
@@ -86,14 +86,14 @@ function relink(s: AppState, fn: (draft: TreeState) => EditOut): AppState {
   });
 }
 
-/** Убрать связи по условию; если ничего не убралось — изменения не было. */
+/** Remove links by a condition; if nothing was removed, there was no change. */
 function dropLinks(d: TreeState, drop: (l: Link) => boolean): boolean {
   const before = d.links.length;
   d.links = d.links.filter((l) => !drop(l));
   return d.links.length !== before;
 }
 
-/** Общий каркас изменения: снимок в историю, работа на копии, новое состояние наружу. */
+/** The shared frame of a change: a snapshot into history, work on a copy, the new state out. */
 function edit(s: AppState, fn: (draft: TreeState) => EditOut): AppState {
   const draft = clone(s.tree);
   const out = fn(draft);
@@ -150,7 +150,7 @@ export function reducer(s: AppState, a: Action): AppState {
 
     case "update": {
       if (!s.tree.people[a.id]) return s;
-      // правка полей идёт без снимка: иначе отмена откатывала бы по букве
+      // field edits go without a snapshot: otherwise undo would roll back letter by letter
       if (a.quiet) {
         const tree = clone(s.tree);
         Object.assign(tree.people[a.id], a.patch);
@@ -265,7 +265,7 @@ export function reducer(s: AppState, a: Action): AppState {
   }
 }
 
-/** Что сказать о новой связи. */
+/** What to say about a new link. */
 const CONNECTED: Record<Relation, string> = {
   spouse: "msg.marriage",
   sibling: "msg.siblingOf",
@@ -273,7 +273,7 @@ const CONNECTED: Record<Relation, string> = {
   parent: "msg.parentOf",
 };
 
-/** Породнить двоих выбранным способом. `from` — тот, от кого тянули связь. */
+/** Relate two people the chosen way. `from` is the one the link was dragged from. */
 function relate(d: TreeState, mode: Relation, from: string, to: string): PairResult {
   if (mode === "spouse") return addPair(d, from, to);
   if (mode === "sibling") return sibling(d, from, to);
@@ -281,9 +281,9 @@ function relate(d: TreeState, mode: Relation, from: string, to: string): PairRes
 }
 
 /**
- * Брат или сестра для `to`. Если у того есть родители в древе — новый человек
- * становится их ребёнком, и это обычные стрелки. Если родителей нет — записываем
- * само родство, оно рисуется пунктиром.
+ * A brother or sister for `to`. If that person has parents in the tree, the new person
+ * becomes their child and these are ordinary arrows. If there are no parents, we record
+ * the kinship itself, and it is drawn dashed.
  */
 function sibling(d: TreeState, to: string, id: string): PairResult {
   const ps = parentsOf(d, to);
@@ -304,7 +304,7 @@ function unpin(people: Record<string, Person>): Record<string, Person> {
   return out;
 }
 
-/* ============================ хранилище ============================ */
+/* ============================= the store ============================ */
 
 const KEY = "genealogy:v3";
 
@@ -316,7 +316,7 @@ export function loadStored(): TreeState | null {
     if (!d || !d.people || !Object.keys(d.people).length) return null;
     return normalize(d);
   } catch {
-    return null; // сломанное хранилище не должно мешать открыть древо
+    return null; // a broken store must not stop the tree from opening
   }
 }
 
@@ -324,6 +324,6 @@ export function store(tree: TreeState): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(tree));
   } catch {
-    /* приватный режим, переполнение — переживём */
+    /* private mode, quota exceeded — we will live */
   }
 }

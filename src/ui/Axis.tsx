@@ -3,7 +3,7 @@ import type { View } from "./view.ts";
 
 const STEPS = [5, 10, 20, 25, 50, 100, 200];
 
-/** Липкая шкала лет слева — рисуется в экранных координатах. */
+/** The sticky scale of years on the left — drawn in screen coordinates. */
 export function Axis({ tl, view, size }: { tl: Timeline; view: View; size: { w: number; h: number } }) {
   if (size.w < 40) return null;
 

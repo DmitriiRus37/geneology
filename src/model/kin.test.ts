@@ -5,38 +5,38 @@ import { kinOf } from "./kin.ts";
 import { addPair, addPerson, addSibling, link } from "./tree.ts";
 import { emptyState } from "./types.ts";
 
-function семья() {
+function family() {
   const s = emptyState();
-  const отец = addPerson(s, { name: "Иван Егорович Якунин", sex: "m" });
-  const мать = addPerson(s, { name: "Анна Фёдоровна Якунина", sex: "f" });
-  const сын = addPerson(s, { name: "Алексей Иванович Якунин", sex: "m" });
-  const дочь = addPerson(s, { name: "Мария Ивановна Якунина", sex: "f" });
-  addPair(s, отец, мать);
-  link(s, отец, сын);
-  link(s, мать, сын);
-  link(s, отец, дочь);
-  link(s, мать, дочь);
-  return { s, отец, мать, сын, дочь };
+  const father = addPerson(s, { name: "Иван Егорович Якунин", sex: "m" });
+  const mother = addPerson(s, { name: "Анна Фёдоровна Якунина", sex: "f" });
+  const son = addPerson(s, { name: "Алексей Иванович Якунин", sex: "m" });
+  const daughter = addPerson(s, { name: "Мария Ивановна Якунина", sex: "f" });
+  addPair(s, father, mother);
+  link(s, father, son);
+  link(s, mother, son);
+  link(s, father, daughter);
+  link(s, mother, daughter);
+  return { s, father, mother, son, daughter };
 }
 
-test("родня подписана по полу", () => {
-  const { s, отец, мать, сын, дочь } = семья();
-  const у = (id: string) => Object.fromEntries(kinOf(s, id).map((k) => [s.people[k.id].name, k.label]));
-  assert.deepEqual(у(сын), {
+test("kin are captioned by sex", () => {
+  const { s, father, mother, son, daughter } = family();
+  const rolesOf = (id: string) => Object.fromEntries(kinOf(s, id).map((k) => [s.people[k.id].name, k.label]));
+  assert.deepEqual(rolesOf(son), {
     "Иван Егорович Якунин": "отец",
     "Анна Фёдоровна Якунина": "мать",
     "Мария Ивановна Якунина": "сестра",
-  }, "у сына родители и сестра через общих родителей — на шаг вверх и вниз, дальше по древу не идём");
-  assert.deepEqual(у(отец), {
+  }, "the son has parents and a sister through shared parents — one step up and down, no further across the tree");
+  assert.deepEqual(rolesOf(father), {
     "Анна Фёдоровна Якунина": "жена",
     "Алексей Иванович Якунин": "сын",
     "Мария Ивановна Якунина": "дочь",
   });
-  assert.equal(у(мать)["Иван Егорович Якунин"], "муж");
-  assert.equal(kinOf(s, дочь).find((k) => k.id === отец)?.label, "отец");
+  assert.equal(rolesOf(mother)["Иван Егорович Якунин"], "муж");
+  assert.equal(kinOf(s, daughter).find((k) => k.id === father)?.label, "отец");
 });
 
-test("пол не указан — роль общая", () => {
+test("with the sex unstated the role is the general one", () => {
   const s = emptyState();
   const a = addPerson(s, { name: "Х", sex: "u" });
   const b = addPerson(s, { name: "Y", sex: "u" });
@@ -45,26 +45,26 @@ test("пол не указан — роль общая", () => {
   assert.equal(kinOf(s, a)[0].label, "ребёнок");
 });
 
-test("запутанное родство не зацикливает: человек в двух ролях — одна строка", () => {
+test("tangled kinship does not loop: a person in two roles is one line", () => {
   const s = emptyState();
-  const он = addPerson(s, { name: "Он", sex: "m" });
-  const она = addPerson(s, { name: "Она", sex: "f" });
-  link(s, он, она); // и отец…
-  addPair(s, он, она); // …и муж, как ни печально
-  const rows = kinOf(s, она);
-  assert.equal(rows.length, 1, "один человек — одна строка");
+  const him = addPerson(s, { name: "Он", sex: "m" });
+  const her = addPerson(s, { name: "Она", sex: "f" });
+  link(s, him, her); // her father...
+  addPair(s, him, her); // ...and her husband, sad as that is
+  const rows = kinOf(s, her);
+  assert.equal(rows.length, 1, "one person, one line");
   assert.equal(rows[0].label, "отец · муж");
-  assert.deepEqual(kinOf(s, он).map((k) => k.label), ["жена · дочь"]);
+  assert.deepEqual(kinOf(s, him).map((k) => k.label), ["жена · дочь"]);
 });
 
-test("сам себе роднёй не бывает", () => {
+test("nobody is kin to themselves", () => {
   const s = emptyState();
-  const один = addPerson(s, { name: "Один", sex: "m" });
-  s.links.push({ parent: один, child: один }); // битые данные из файла
-  assert.deepEqual(kinOf(s, один), []);
+  const alone = addPerson(s, { name: "Один", sex: "m" });
+  s.links.push({ parent: alone, child: alone }); // broken data out of a file
+  assert.deepEqual(kinOf(s, alone), []);
 });
 
-test("однополый брак не создаётся", () => {
+test("a same-sex marriage is not created", () => {
   const s = emptyState();
   const m1 = addPerson(s, { name: "Иван", sex: "m" });
   const m2 = addPerson(s, { name: "Пётр", sex: "m" });
@@ -76,27 +76,27 @@ test("однополый брак не создаётся", () => {
   assert.match(r.ok === false ? render("ru", r.reason) : "", /Оба мужчины/);
   assert.equal(s.pairs.length, 0);
 
-  assert.equal(addPair(s, m1, f1).ok, true, "мужчина и женщина — можно");
-  assert.equal(addPair(s, f1, u1).ok, true, "пол не указан — не мешаем");
-  assert.equal(addPair(s, m1, m1).ok, false, "сам с собой — нельзя");
+  assert.equal(addPair(s, m1, f1).ok, true, "a man and a woman are allowed");
+  assert.equal(addPair(s, f1, u1).ok, true, "the sex is unstated, so we do not interfere");
+  assert.equal(addPair(s, m1, m1).ok, false, "with oneself is not allowed");
 });
 
-test("братья и сёстры в родне: через общих родителей и записанные явно", () => {
+test("siblings among the kin: through shared parents and recorded explicitly", () => {
   const s = emptyState();
-  const мать = addPerson(s, { name: "Мать", sex: "f" });
-  const я = addPerson(s, { name: "Я", sex: "m" });
-  const сестра = addPerson(s, { name: "Сестра", sex: "f" });
-  const брат = addPerson(s, { name: "Брат", sex: "m" });
-  link(s, мать, я);
-  link(s, мать, сестра);
-  assert.equal(addSibling(s, я, брат).ok, true);
-  const rows = kinOf(s, я);
-  const роль = (id: string) => rows.find((r) => r.id === id);
-  assert.equal(роль(сестра)?.label, "сестра");
-  assert.equal(роль(сестра)?.explicit, undefined, "через общую мать — убирать надо связь с матерью");
-  assert.equal(роль(брат)?.label, "брат");
-  assert.equal(роль(брат)?.explicit, true, "записан явно — можно убрать");
-  const r = addSibling(s, я, сестра);
-  assert.ok(r.ok && r.already, "уже брат и сестра через мать — второй раз не записываем");
-  assert.equal(addSibling(s, мать, я).ok, false, "родитель братом не бывает");
+  const mother = addPerson(s, { name: "Мать", sex: "f" });
+  const me = addPerson(s, { name: "Я", sex: "m" });
+  const sister = addPerson(s, { name: "Сестра", sex: "f" });
+  const brother = addPerson(s, { name: "Брат", sex: "m" });
+  link(s, mother, me);
+  link(s, mother, sister);
+  assert.equal(addSibling(s, me, brother).ok, true);
+  const rows = kinOf(s, me);
+  const roleOf = (id: string) => rows.find((r) => r.id === id);
+  assert.equal(roleOf(sister)?.label, "сестра");
+  assert.equal(roleOf(sister)?.explicit, undefined, "through a shared mother — it is the link to the mother that must go");
+  assert.equal(roleOf(brother)?.label, "брат");
+  assert.equal(roleOf(brother)?.explicit, true, "recorded explicitly, so it can be removed");
+  const r = addSibling(s, me, sister);
+  assert.ok(r.ok && r.already, "already siblings through the mother — we do not record it twice");
+  assert.equal(addSibling(s, mother, me).ok, false, "a parent is never a sibling");
 });

@@ -6,15 +6,16 @@ export interface ParsedDate {
   m: number;
   d: number;
   txt: string;
-  /** год известен приблизительно: «197?» — семидесятые, «19??» — двадцатый век */
+  /** the year is known only roughly: "197?" is the seventies, "19??" the twentieth century */
   approx?: true;
 }
 
 const pad2 = (v: number | string): string => (String(v).length < 2 ? "0" : "") + v;
 
 /**
- * Год из записи с неизвестными цифрами: «197?» → 1975, «19??» → 1950. Возвращает
- * середину промежутка — по ней человек встаёт в свой ряд и сортируется среди братьев.
+ * The year from a record with unknown digits: "197?" -> 1975, "19??" -> 1950. It returns
+ * the middle of the range — that is what puts a person in their row and sorts them among
+ * their siblings.
  */
 function approxYear(token: string): number | null {
   const m = token.match(/^(\d{3})\?$/);
@@ -24,7 +25,7 @@ function approxYear(token: string): number | null {
   return null;
 }
 
-/** Есть ли в записи года неизвестные цифры — такую дату показываем как оценку. */
+/** Whether the year record has unknown digits — such a date is shown as an estimate. */
 export const isApproxYear = (raw: string | undefined): boolean => /(^|\D)\d{2,3}\?{1,2}(\D|$)/.test(String(raw || ""));
 
 export function parseDate(raw: string | undefined | null): ParsedDate | null {
@@ -34,7 +35,7 @@ export function parseDate(raw: string | undefined | null): ParsedDate | null {
   let m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/); // 01.12.1995
   if (m) return { y: +m[3], m: +m[2], d: +m[1], txt: pad2(m[1]) + "." + pad2(m[2]) + "." + m[3] };
 
-  // «??.??.1995» — день и месяц неизвестны; «09.03.202?» — неизвестна цифра года
+  // "??.??.1995" — the day and month are unknown; "09.03.202?" — a digit of the year is
   m = s.match(/^(\d{1,2}|\?\?)[./-](\d{1,2}|\?\?)[./-](\d{4}|\d{3}\?|\d{2}\?\?)$/);
   if (m) {
     const d = m[1] === "??" ? 0 : +m[1];
@@ -56,7 +57,7 @@ export function parseDate(raw: string | undefined | null): ParsedDate | null {
   m = s.match(/^(\d{4})$/); // 1995
   if (m) return { y: +m[1], m: 0, d: 0, txt: m[1] };
 
-  return { y: 0, m: 0, d: 0, txt: s }; // «ок. 1890», «до 1917», «1880-е гг.»
+  return { y: 0, m: 0, d: 0, txt: s }; // "ок. 1890", "до 1917", "1880-е гг."
 }
 
 export const dateTxt = (raw: string | undefined): string => {
@@ -71,8 +72,8 @@ export function dateKey(raw: string | undefined): number | null {
 }
 
 /**
- * Разбор одного поля «годы жизни» на рождение и смерть.
- * «1880-е гг.» — не диапазон: справа от дефиса должна стоять цифра.
+ * Splitting a single "years of life" field into birth and death.
+ * "1880-е гг." is not a range: a digit must stand to the right of the hyphen.
  */
 export function splitRange(s: string | undefined): [string, string] {
   const one = String(s || "").trim();
@@ -91,7 +92,7 @@ export function fmtDates(p: Pick<Person, "born" | "died">, lang: Lang = "ru"): s
   return "";
 }
 
-/** Ключ сортировки братьев и сестёр: без даты рождения ориентируемся на дату смерти. */
+/** The sort key for siblings: with no date of birth we go by the date of death. */
 export function birthKey(p: Pick<Person, "born" | "died">): number | null {
   const k = dateKey(p.born);
   if (k !== null) return k;
@@ -99,7 +100,7 @@ export function birthKey(p: Pick<Person, "born" | "died">): number | null {
   return d !== null ? d - 500000 : null;
 }
 
-/** Год из произвольного текста: «осень 1938», «ок. 1890», «1880-е гг.», «197?». */
+/** The year from arbitrary text: "осень 1938", "ок. 1890", "1880-е гг.", "197?". */
 export function yearIn(text: string | undefined): number | null {
   const t = String(text || "");
   const m = t.match(/(1[0-9]{3}|20[0-9]{2})/);
@@ -111,9 +112,10 @@ export function yearIn(text: string | undefined): number | null {
 }
 
 /**
- * Что записать в поле даты, когда человек закончил ввод. Голый год — «??.??.1995»:
- * так видно, что день и месяц неизвестны, а не забыты. Месяц с годом — «??.12.1995».
- * Приблизительный год («197?») — тоже с вопросами впереди. Остальное не трогаем.
+ * What to write into a date field once the person has finished typing. A bare year becomes
+ * "??.??.1995": that way it is visible that the day and month are unknown rather than
+ * forgotten. A month with a year becomes "??.12.1995". An approximate year ("197?") also
+ * gets the question marks in front. Everything else is left alone.
  */
 export function normalizeDateInput(raw: string): string {
   const s = raw.trim();
@@ -129,9 +131,9 @@ export function yearOfBirth(p: Pick<Person, "born">): number | null {
   return yearIn(p.born);
 }
 
-/** Короткая подпись для списка: «1929–1985», «1929» или «†1985». */
+/** A short caption for the list: "1929-1985", "1929" or "+1985". */
 export function yearTag(p: Pick<Person, "born" | "died">): string {
-  // год достаём и из свободного текста: «осень 1938», «1880-е гг.»
+  // we pull the year out of free text too: "осень 1938", "1880-е гг."
   const b = yearIn(p.born);
   const d = yearIn(p.died);
   const by = b ? String(b) : "";

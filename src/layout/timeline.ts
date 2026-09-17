@@ -9,14 +9,15 @@ export interface Timeline {
   min: number;
   max: number;
   scale: number;
-  /** год оценён по родне, а не взят из карточки */
+  /** the year was estimated from the kin rather than taken from the card */
   est: Record<string, 1>;
   year: Record<string, number>;
 }
 
 /**
- * Вертикаль по году рождения вместо поколения. Недостающие годы тянем
- * от детей, родителей, братьев-сестёр и супруга, помечая как оценку.
+ * The vertical axis by year of birth instead of by generation. Missing years are
+ * pulled from the children, the parents, the siblings and the spouse, and marked as
+ * an estimate.
  */
 export function applyTimeline(
   state: TreeState,
@@ -35,11 +36,11 @@ export function applyTimeline(
     const y = yearOfBirth(state.people[id]);
     if (y) {
       yr[id] = y;
-      if (isApproxYear(state.people[id].born)) est[id] = 1; // «197?» — год известен приблизительно
+      if (isApproxYear(state.people[id].born)) est[id] = 1; // "197?" — the year is known only roughly
     }
   }
   for (const id of ids) {
-    // известна только смерть — грубая оценка
+    // only the death is known — a rough estimate
     if (yr[id] !== undefined) continue;
     const dy = yearIn(state.people[id].died);
     if (dy) {
@@ -55,8 +56,8 @@ export function applyTimeline(
     for (const id of ids) {
       if (yr[id] !== undefined) continue;
 
-      // У супруга есть настоящая дата — встаём с ним вровень и дальше не гадаем.
-      // Оценку супруга берём только в последнюю очередь, ниже.
+      // The spouse has a real date — we stand level with them and guess no further.
+      // A spouse's estimate is taken only as a last resort, below.
       const exact = spouses(id).find((s2) => yr[s2] !== undefined && !est[s2]);
       if (exact !== undefined) {
         yr[id] = yr[exact];
@@ -128,7 +129,7 @@ export function applyTimeline(
     if (yr[id] > maxYr) maxYr = yr[id];
   }
 
-  // масштаб подбираем так, чтобы карточки соседних поколений не наезжали
+  // we pick the scale so that the cards of neighbouring generations do not collide
   let scale = 5.5;
   if (ids.length <= 400) {
     for (let i = 0; i < ids.length; i++) {
@@ -143,15 +144,16 @@ export function applyTimeline(
       }
     }
   }
-  // Потолок — только предохранитель от совсем уж дикой картинки. Раньше тут
-  // стояло 14, и он отбирал у формулы ровно то, что она просила: при высоких
-  // карточках нужно ~50 px на год, иначе соседние годы налезают друг на друга.
+  // The ceiling is only a fuse against a truly wild picture. It used to be 14, and
+  // it took away from the formula exactly what the formula was asking for: with tall
+  // cards about 50 px per year are needed, otherwise neighbouring years collide.
   scale = Math.min(scale, 60);
   for (const id of ids) pos[id].y = (yr[id] - minYr) * scale - pos[id].h / 2;
 
-  // Родившиеся в один год на одном месте — разводим вбок. Проход повторяем:
-  // сдвинутая карточка может налезть на следующую, а одним заходом это не
-  // ловилось — оставались наложения, и линиям между ними негде было пройти.
+  // Those born in the same year land in the same place — we spread them sideways.
+  // The pass is repeated: a card that was moved may collide with the next one, and a
+  // single pass did not catch that — overlaps were left, and the lines between them
+  // had nowhere to pass.
   if (ids.length <= 400) {
     const need = NODE_W + gaps.h;
     const orig: Record<string, number> = {};
@@ -171,9 +173,10 @@ export function applyTimeline(
       }
       if (!moved) break;
     }
-    // Разведение может и не сойтись: цепочка ровесников толкает друг друга по кругу.
-    // Последний проход слева направо разводит всех наверняка — двигая только вправо,
-    // в порядке x, каждую карточку от уже проверенных.
+    // The spreading may not converge: a chain of people of the same age pushes each
+    // other round in a circle. A final left-to-right pass separates everyone for
+    // certain — moving only to the right, in order of x, each card away from those
+    // already checked.
     const byX = ids.slice().sort((a, b) => pos[a].x - pos[b].x);
     for (let i = 1; i < byX.length; i++) {
       const A = pos[byX[i]];
@@ -184,12 +187,13 @@ export function applyTimeline(
       }
     }
 
-    // Развели — и тем самым сломали выравнивание, сделанное в обычном режиме.
-    // Возвращаем карточки на прежние места, но только пока это никого не задевает:
-    // наложения здесь дороже отвесной линии. Именно на прежние места, а не «под
-    // родителей»: под середину родителей тянулся каждый из братьев по отдельности,
-    // и тот, кому годы позволяли, вставал в столбик собственного супруга — сквозь
-    // него шла линия супруга к их детям.
+    // Having spread them, we have broken the alignment made in the ordinary mode. We
+    // put the cards back where they were, but only while that touches nobody:
+    // overlaps cost more here than a vertical line. Back to their previous places
+    // specifically, not "under the parents": each sibling separately was drawn to the
+    // middle of the parents, and whichever of them the years allowed would stand in
+    // the column of their own spouse — with that spouse's line to their children
+    // running straight through them.
     const crowded = (id: string): boolean =>
       ids.some((other) => {
         if (other === id) return false;

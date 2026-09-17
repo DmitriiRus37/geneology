@@ -1,12 +1,12 @@
 /**
- * Два языка интерфейса. Модель (редьюсер, проверки связей, родня, даты) не знает,
- * на каком языке говорит пользователь: она отдаёт ключ сообщения с подстановками,
- * а строку собирает интерфейс через `t`. Так одно и то же «Так получилась бы
- * петля» не зашито в трёх местах и переводится один раз.
+ * Two interface languages. The model (the reducer, the link checks, the kinship, the
+ * dates) does not know which language the user speaks: it hands back a message key with
+ * substitutions, and the interface assembles the string through `t`. That way one and the
+ * same "that would make a loop" is not wired into three places and is translated once.
  */
 export type Lang = "ru" | "en";
 
-/** Сообщение из модели: ключ словаря и подстановки в фигурных скобках. */
+/** A message from the model: a dictionary key and substitutions in curly braces. */
 export interface Msg {
   k: string;
   v?: Record<string, string | number>;
@@ -25,6 +25,8 @@ const RU: Record<string, string> = {
   "notice.pdfFailed": "PDF не получился: {detail}",
   "notice.loaded": "Древо загружено",
   "notice.fileFailed": "Не получилось прочитать файл",
+  "notice.zipLoaded": "Из архива загружено людей: {n}",
+  "notice.zipFailed": "Архив не загрузился: {detail}",
   "confirm.delete": "Удалить «{name}» и все его связи?",
 
   "rail.intro": "Добавьте человека, выберите его на древе — и растите ветку стрелками.",
@@ -40,6 +42,8 @@ const RU: Record<string, string> = {
   "rail.undo": "Отменить",
   "rail.saveFile": "Сохранить в файл",
   "rail.openFile": "Открыть файл",
+  "rail.uploadZip": "Загрузить архив",
+  "rail.downloadZip": "Скачать архив",
   "rail.svg": "Картинка SVG",
   "rail.png": "Картинка PNG",
   "rail.pdf": "PDF",
@@ -48,6 +52,7 @@ const RU: Record<string, string> = {
   "where.conflict": "Древо на диске изменилось в другом месте. Правки сюда не пишутся.",
   "where.disk": "Каждая правка пишется в {dir}",
   "where.browser": "Сохраняется в браузере — на диск не пишется",
+  "where.memory": "Древо живёт в памяти сервера. Скачайте архив: с перезапуском правки пропадут.",
   "where.recheck": "Проверить сервер заново",
   "where.reread": "Перечитать с диска",
 
@@ -204,6 +209,8 @@ const EN: Record<string, string> = {
   "notice.pdfFailed": "PDF failed: {detail}",
   "notice.loaded": "Tree loaded",
   "notice.fileFailed": "Could not read the file",
+  "notice.zipLoaded": "Loaded {n} people from the archive",
+  "notice.zipFailed": "The archive did not load: {detail}",
   "confirm.delete": "Delete “{name}” and all their links?",
 
   "rail.intro": "Add a person, select them on the tree, and grow the branch with the arrows.",
@@ -219,6 +226,8 @@ const EN: Record<string, string> = {
   "rail.undo": "Undo",
   "rail.saveFile": "Save to file",
   "rail.openFile": "Open file",
+  "rail.uploadZip": "Upload archive",
+  "rail.downloadZip": "Download archive",
   "rail.svg": "SVG image",
   "rail.png": "PNG image",
   "rail.pdf": "PDF",
@@ -227,6 +236,7 @@ const EN: Record<string, string> = {
   "where.conflict": "The tree on disk changed elsewhere. Edits are not written.",
   "where.disk": "Every edit is written to {dir}",
   "where.browser": "Saved in the browser only, not to disk",
+  "where.memory": "The tree lives in the server's memory. Download the archive: a restart loses your edits.",
   "where.recheck": "Check the server again",
   "where.reread": "Reload from disk",
 
@@ -373,7 +383,7 @@ const EN: Record<string, string> = {
 
 const DICT: Record<Lang, Record<string, string>> = { ru: RU, en: EN };
 
-/** Строка по ключу с подстановками; нет перевода — русский, нет и его — сам ключ. */
+/** A string by key with substitutions; no translation falls back to Russian, and failing that to the key itself. */
 export function t(lang: Lang, key: string, vars?: Record<string, string | number>): string {
   const s = DICT[lang][key] ?? RU[key] ?? key;
   return vars ? s.replace(/\{(\w+)\}/g, (_, k: string) => (k in vars ? String(vars[k]) : "{" + k + "}")) : s;
@@ -395,9 +405,9 @@ export function saveLang(lang: Lang): void {
   try {
     localStorage.setItem(LANG_KEY, lang);
   } catch {
-    /* приватный режим — переживём */
+    /* private mode — we will live */
   }
 }
 
-/** Все ключи русского словаря есть и в английском — проверяется тестом. */
+/** Every key of the Russian dictionary exists in the English one too — a test checks it. */
 export const dictionaryKeys = (): { ru: string[]; en: string[] } => ({ ru: Object.keys(RU), en: Object.keys(EN) });

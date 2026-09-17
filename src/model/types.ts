@@ -8,9 +8,9 @@ export interface Person {
   born: string;
   died: string;
   sex: Sex;
-  /** порядковый номер добавления — им держится стабильный порядок рядов */
+  /** the ordinal number of the addition — it is what holds the row order stable */
   n: number;
-  /** приколотая позиция после перетаскивания */
+  /** the pinned position after a drag */
   fx?: number;
   fy?: number;
 }
@@ -32,9 +32,9 @@ export interface TreeState {
   seq: number;
   timeline: boolean;
   gap: number;
-  /** кого сейчас не показываем: срезанная вверх часть древа */
+  /** who we are not showing right now: the part of the tree cut off upwards */
   hidden: string[];
-  /** родные братья и сёстры без общих записанных родителей — пунктирное родство */
+  /** siblings with no shared parents recorded — a dashed kinship */
   sibs: Pair[];
 }
 
@@ -49,13 +49,13 @@ export const emptyState = (): TreeState => ({
   sibs: [],
 });
 
-/** Ключ неупорядоченной пары: одинаковый, с какой стороны ни зайди. */
+/** The key of an unordered pair: the same whichever side you come from. */
 export const pairKey = (a: string, b: string): string => (a < b ? a + "|" + b : b + "|" + a);
 
-/** Та ли это пара, без оглядки на порядок записи. */
+/** Whether this is that pair, regardless of the order it was recorded in. */
 export const isPair = (p: Pair, a: string, b: string): boolean =>
   (p.a === a && p.b === b) || (p.a === b && p.b === a);
 
-/** Второй в паре, если первый — `id`; иначе null. */
+/** The other one in the pair if the first is `id`; otherwise null. */
 export const otherIn = (p: Pair, id: string): string | null =>
   p.a === id ? p.b : p.b === id ? p.a : null;

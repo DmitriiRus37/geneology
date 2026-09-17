@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import family from "./data/family.json";
 import { loadLang, msg, saveLang, t, type Lang } from "./i18n.ts";
-import { flushDisk, probeDisk, reloadDisk, saveDisk } from "./io/disk.ts";
+import { flushDisk, probeDisk, reloadDisk, saveDisk, type Store } from "./io/disk.ts";
 import { bboxOf, layout } from "./layout/layout.ts";
 import { initialAppState, loadStored, reducer, store, type Relation } from "./model/store.ts";
 import { normalize } from "./model/tree.ts";
@@ -11,13 +11,13 @@ import { AppCtx } from "./ui/ctx.ts";
 import { Sidebar } from "./ui/Sidebar.tsx";
 
 export type Where =
-  | { kind: "disk"; dir: string; blocked: null | "conflict" | "stale" }
+  | { kind: "disk"; dir: string; store: Store; blocked: null | "conflict" | "stale" }
   | { kind: "browser" }
   | null;
 
 export function App() {
   const [s, d] = useReducer(reducer, undefined, () =>
-    // при первом запуске подставляем расшифровку бумажной росписи
+    // on the very first run we put in the transcription of the paper record
     initialAppState(loadStored() ?? normalize(family)),
   );
   const [filter, setFilter] = useState("");
@@ -25,7 +25,7 @@ export function App() {
   const [where, setWhere] = useState<Where>(null);
   const board = useRef<BoardHandle>(null);
 
-  // язык интерфейса помнится в браузере: это настройка экрана, а не данных
+  // the interface language is remembered in the browser: it is a setting of the screen, not of the data
   const [lang, setLangState] = useState<Lang>(loadLang);
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
@@ -42,8 +42,10 @@ export function App() {
 
   const treeRef = useRef(s.tree);
   treeRef.current = s.tree;
+  /** What has already gone to the store: we do not write the same tree twice. */
+  const lastSaved = useRef<TreeState | null>(null);
 
-  // рядом может работать локальный сервер — тогда пишем в файлы, а не в браузер
+  // a local server may be running alongside — then we write to files rather than to the browser
   useEffect(() => {
     let alive = true;
     probeDisk().then((info) => {
@@ -52,11 +54,16 @@ export function App() {
         setWhere({ kind: "browser" });
         return;
       }
-      setWhere({ kind: "disk", dir: info.dir, blocked: info.stale ? "stale" : null });
+      setWhere({ kind: "disk", dir: info.dir, store: info.store, blocked: info.stale ? "stale" : null });
       if (info.tree && Object.keys(info.tree.people).length) {
         d({ type: "load", tree: normalize(info.tree), silent: true });
       } else if (!info.stale) {
-        void saveDisk(treeRef.current); // persons/ ещё пуста — засеваем тем, что открыто
+        // The store is empty — we seed it with whatever is open. We mark the tree as
+        // sent straight away: otherwise the autosave would get a second request out
+        // behind it, still carrying the old fingerprint, and answer itself with a
+        // conflict.
+        lastSaved.current = treeRef.current;
+        void saveDisk(treeRef.current);
       }
       if (info.stale) {
         d({ type: "notice", msg: msg("notice.staleServer") });
@@ -67,12 +74,12 @@ export function App() {
     };
   }, []);
 
-  // Каждое изменение уезжает на диск (или в браузер, если сервера нет) — через
-  // секунду после последней правки, чтобы не писать файл на каждую букву. Но если
-  // выбрали другого человека или ушли из текстового поля, ждать нечего — пишем сразу.
+  // Every change goes off to disk (or to the browser when there is no server) a second
+  // after the last edit, so as not to write a file for every letter. But if another
+  // person was selected or a text field was left, there is nothing to wait for — we
+  // write at once.
   const [flushSeq, setFlushSeq] = useState(0);
   const flushSeen = useRef(0);
-  const lastSaved = useRef<TreeState | null>(null);
   useEffect(() => {
     setFlushSeq((n) => n + 1);
   }, [s.selected]);
@@ -86,8 +93,8 @@ export function App() {
   }, []);
   useEffect(() => {
     if (!where) return;
-    if (where.kind === "disk" && where.blocked) return; // пока не починим — не пишем
-    if (lastSaved.current === s.tree) return; // писать нечего
+    if (where.kind === "disk" && where.blocked) return; // until it is mended, we do not write
+    if (lastSaved.current === s.tree) return; // there is nothing to write
     const now = flushSeq !== flushSeen.current;
     flushSeen.current = flushSeq;
     const t = setTimeout(
@@ -115,7 +122,7 @@ export function App() {
     setWhere((w) => (w && w.kind === "disk" ? { ...w, blocked: null } : w));
   };
 
-  // вкладку закрывают — дописываем то, что не успело уйти
+  // the tab is being closed — we write out whatever did not get away in time
   useEffect(() => {
     if (where?.kind !== "disk" || where.blocked) return;
     const bye = () => flushDisk(treeRef.current);

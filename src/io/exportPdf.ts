@@ -3,17 +3,17 @@ import { rasterize, renderSvg } from "./exportSvg.ts";
 import { download } from "./files.ts";
 
 /**
- * PDF со всем древом целиком — одной страницей размером с само древо.
- * Никаких библиотек: картинка кладётся в страницу, а сам файл собирается
- * побайтово. Пиксели жмём тем же zlib, который понимает PDF; если браузер
- * такого не умеет, кладём JPEG.
+ * A PDF of the whole tree — one page the size of the tree itself. No libraries: the
+ * picture is put into the page and the file itself is assembled byte by byte. The pixels
+ * are compressed with the same zlib that PDF understands; if the browser cannot do that,
+ * we put in a JPEG.
  */
 
-/** Сколько пикселей на единицу древа: больше — чётче и тяжелее. */
+/** How many pixels per unit of the tree: more means sharper and heavier. */
 const DPI_SCALE = 3;
-/** Ни одна сторона картинки не должна перевалить за это. */
+/** Neither side of the picture may go past this. */
 const MAX_SIDE = 7000;
-/** Предел размера страницы в PDF — 200 дюймов. */
+/** The limit on page size in PDF is 200 inches. */
 const MAX_PT = 14000;
 
 const ascii = (s: string): Uint8Array => {
@@ -36,7 +36,7 @@ async function deflate(bytes: Uint8Array): Promise<Uint8Array | null> {
 const blobBytes = async (cv: HTMLCanvasElement, type: string, q: number): Promise<Uint8Array | null> =>
   new Promise((res) => cv.toBlob((b) => (b ? b.arrayBuffer().then((a) => res(new Uint8Array(a))) : res(null)), type, q));
 
-/** Собираем одностраничный PDF с одной картинкой во всю страницу. */
+/** We assemble a one-page PDF with a single picture filling the page. */
 function buildPdf(
   img: Uint8Array,
   px: number,
@@ -67,7 +67,7 @@ function buildPdf(
       " /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>",
   );
 
-  // картинка
+  // the picture
   offsets[4] = at;
   put(
     "4 0 obj\n<< /Type /XObject /Subtype /Image /Width " + px + " /Height " + py +
@@ -96,13 +96,13 @@ export async function exportPdfFile(b: BBox | null, fail: (msg: string) => void)
     const scale = Math.min(DPI_SCALE, MAX_SIDE / Math.max(r.w, r.h, 1));
     const cv = await rasterize(r, scale);
 
-    // страница ровно по размеру древа, но не больше того, что допускает формат
+    // the page exactly the size of the tree, but no larger than the format allows
     const fit = Math.min(1, MAX_PT / Math.max(r.w, r.h, 1));
     const pageW = r.w * fit;
     const pageH = r.h * fit;
 
     const ctx = cv.getContext("2d");
-    if (!ctx) throw new Error("нет canvas");
+    if (!ctx) throw new Error("no canvas");
     const rgba = ctx.getImageData(0, 0, cv.width, cv.height).data;
     const rgb = new Uint8Array(cv.width * cv.height * 3);
     for (let i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
@@ -125,7 +125,7 @@ export async function exportPdfFile(b: BBox | null, fail: (msg: string) => void)
     download("genealogy.pdf", pdf);
     return true;
   } catch (e) {
-    fail((e as Error).message); // подпись «PDF не получился» добавит интерфейс на своём языке
+    fail((e as Error).message); // the interface adds the "PDF failed" caption in its own language
     return true;
   }
 }

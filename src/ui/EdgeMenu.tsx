@@ -25,7 +25,7 @@ interface Row {
   run: () => void;
 }
 
-/** Щёлкнули по линии — показываем, какие связи она держит, и даём их убрать. */
+/** A line was clicked — we show which links it holds and let them be removed. */
 export function EdgeMenu({ spot, people, pairs, onCut, onUnmarry, onUnsibling, onClose }: Props) {
   const { t } = useApp();
   const box = useRef<HTMLDivElement>(null);

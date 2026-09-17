@@ -3,13 +3,13 @@ import type { Box } from "../layout/layout.ts";
 import type { Relation } from "../model/store.ts";
 import { useApp } from "./ctx.ts";
 
-const OFF = 27; // экранных пикселей от края карточки
+const OFF = 27; // screen pixels from the card's edge
 
 interface Props {
   b: Box;
-  /** остальные карточки: стрелку супруга ставим туда, где свободнее */
+  /** the other cards: we put the spouse arrow wherever there is more room */
   others: Box[];
-  /** масштаб вида: стрелки держим одного размера на экране */
+  /** the view's zoom: we keep the arrows the same size on screen */
   k: number;
   onOpen: (mode: Relation, e: MouseEvent) => void;
 }
@@ -27,7 +27,7 @@ const TITLE: Record<Relation, string> = {
   sibling: "handle.addSibling",
 };
 
-/** Стрелки добавления вокруг выбранной карточки. */
+/** The add arrows around the selected card. */
 export function Handles({ b, others, k, onOpen }: Props) {
   const { t } = useApp();
   const off = OFF / k;
@@ -43,7 +43,7 @@ export function Handles({ b, others, k, onOpen }: Props) {
   const right = b.x + b.w / 2 + off;
   const left = b.x - b.w / 2 - off;
   const sx = busy(right) && !busy(left) ? left : right;
-  const ox = sx === left ? right : left; // брат или сестра — с другой стороны от супруга
+  const ox = sx === left ? right : left; // a sibling goes on the other side from the spouse
 
   const spots: { mode: Relation; x: number; y: number; glyph: string; anchor: "start" | "end" }[] = [
     { mode: "parent", x: b.x, y: b.y - off, glyph: "↑", anchor: "start" },

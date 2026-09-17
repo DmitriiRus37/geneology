@@ -18,13 +18,13 @@ export function readJson(file: File): Promise<unknown> {
     rd.onload = () => {
       try {
         const d = JSON.parse(String(rd.result));
-        if (!d || !d.people) throw new Error("нет людей");
+        if (!d || !d.people) throw new Error("no people");
         res(d);
       } catch (e) {
         rej(e);
       }
     };
-    rd.onerror = () => rej(new Error("файл не прочитался"));
+    rd.onerror = () => rej(new Error("the file could not be read"));
     rd.readAsText(file);
   });
 }

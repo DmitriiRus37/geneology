@@ -10,14 +10,14 @@ import { applyTimeline, type Timeline } from "./timeline.ts";
 import { extent, Merge, push } from "../util.ts";
 
 export interface Box {
-  x: number; // центр карточки
-  y: number; // верх карточки
+  x: number; // the card's centre
+  y: number; // the card's top
   w: number;
   h: number;
   lines: CardLine[];
 }
 
-/** Карточка как препятствие для линий. */
+/** A card as an obstacle to the lines. */
 export const rectOf = (b: Box): Rect => ({ x1: b.x - b.w / 2, y1: b.y, x2: b.x + b.w / 2, y2: b.y + b.h });
 
 export interface Graph {
@@ -43,7 +43,7 @@ export interface LayoutResult {
   level: Record<string, number>;
   tl: Timeline | null;
   graph: Graph;
-  /** где подписать блок людей без единой связи */
+  /** where to caption the block of people without a single link */
   lonePlate: { x: number; y: number; w: number } | null;
 }
 
@@ -81,22 +81,23 @@ export function graphOf(state: TreeState): Graph {
   return { parents, children };
 }
 
-/** Поколение: ребёнок всегда ниже самого «молодого» из родителей, супруги — вровень. */
+/** Generation: a child is always below the "youngest" of its parents, spouses are level. */
 function computeLevels(state: TreeState, g: Graph): Record<string, number> {
   const ids = Object.keys(state.people);
   const level: Record<string, number> = {};
   for (const id of ids) level[id] = 0;
   const guard = ids.length + 6;
-  /** Кому положено стоять в одном ряду: супруги и явные брат с сестрой. */
+  /** Who is due to stand in one row: spouses and explicit siblings. */
   const sideBySidePairs = [...state.pairs, ...state.sibs].filter(
     (pr) => state.people[pr.a] && state.people[pr.b],
   );
 
   /**
-   * Ребёнок ниже родителей, супруги вровень, братья и сёстры вровень — до покоя.
-   * Возвращает, сошлось ли: брак поперёк поколений (женился на правнучке
-   * двоюродной сестры) делает правила несовместимыми, и уровни уходят вниз без
-   * конца — тогда братьев не выравниваем, как было до этого правила.
+   * A child below its parents, spouses level, siblings level — until it settles.
+   * Returns whether it converged: a marriage across generations (he married the
+   * great-granddaughter of his cousin) makes the rules incompatible and the levels
+   * sink without end — in that case we do not level the siblings, as it was before
+   * this rule existed.
    */
   const relax = (siblings: boolean): boolean => {
   for (let it = 0; it < guard; it++) {
@@ -117,7 +118,7 @@ function computeLevels(state: TreeState, g: Graph): Record<string, number> {
         changed = true;
       }
     }
-    // супруги вровень; явное братство держится тем же правилом
+    // spouses level; explicit siblinghood holds by the same rule
     for (const pr of sideBySidePairs) {
       const m = Math.max(level[pr.a], level[pr.b]);
       for (const who of [pr.a, pr.b]) {
@@ -127,10 +128,11 @@ function computeLevels(state: TreeState, g: Graph): Record<string, number> {
         }
       }
     }
-    // Братья и сёстры — одно поколение, один ряд. Иначе брат, которого брак увёл
-    // вниз, оказывался на три ряда ниже брата-холостяка, а их родители зависали в
-    // шапке: подтягивание к детям смотрит на самого верхнего ребёнка. Вниз двигать
-    // всегда можно — правило «ребёнок ниже родителя» от этого не страдает.
+    // Siblings are one generation and one row. Otherwise a brother carried down by
+    // a marriage ended up three rows below his unmarried brother, and their parents
+    // hung at the very top: pulling down to the children looks at the topmost
+    // child. Moving down is always allowed — the "child below its parent" rule does
+    // not suffer from it.
     for (const id of siblings ? ids : []) {
       const kids = g.children[id];
       if (kids.length < 2) continue;
@@ -148,16 +150,17 @@ function computeLevels(state: TreeState, g: Graph): Record<string, number> {
   return false;
   };
 
-  // Второй проход: подтягиваем родителей вплотную к детям. Без этого человек,
-  // которого брак увёл на несколько рядов вниз, оставляет всю свою родню в самом
-  // верху древа. Делаем это отдельно от первого прохода: там правило «супруги
-  // вровень» гонялось с этим наперегонки и в итоге ставило родителя вровень с
-  // собственным ребёнком. Здесь дети уже не двигаются, гонки быть не может.
+  // Second pass: we pull parents right down to their children. Without it a person
+  // carried several rows down by a marriage leaves all of their kin at the very top
+  // of the tree. We do it apart from the first pass: there the "spouses level" rule
+  // raced this one and ended up putting a parent level with their own child. Here
+  // the children no longer move, so there can be no race.
   //
-  // Но подтянутый вниз родитель — чей-то брат: его братья и сёстры и их родители
-  // должны съехать за ним, иначе Анна Пермякова стояла на два ряда ниже Сергея и
-  // Марии Лузиных. Поэтому проходы чередуются до покоя: подтянули — снова
-  // выровняли — снова подтянули. Уровни только растут, так что это сходится.
+  // But a parent pulled down is somebody's sibling: their brothers and sisters and
+  // those siblings' parents must move down after them, otherwise a person ends up
+  // two rows below the couple they belong beside. So the passes alternate until it
+  // settles: pull down, level again, pull down again. Levels only ever grow, so
+  // this converges.
   const kin = new Merge<string>();
   for (const pr of sideBySidePairs) kin.join(pr.a, pr.b);
   const clusters = kin.parts(ids);
@@ -200,24 +203,26 @@ function computeLevels(state: TreeState, g: Graph): Record<string, number> {
 
   alignIslandsByYear(state, level);
 
-  // после подтягивания сверху могут остаться пустые ряды — убираем их
+  // after the pulling, empty rows may be left at the top — we remove them
   const used = [...new Set(ids.map((id) => level[id]))].sort((a, b) => a - b);
   const packed = new Map(used.map((v, i) => [v, i]));
   for (const id of ids) level[id] = packed.get(level[id]) as number;
   return level;
 }
 
-/** Столько лет считаем между поколениями, когда ряд не с чем сравнить. */
+/** This many years are counted between generations when a row has nothing to compare with. */
 const YEARS_PER_ROW = 28;
 
 /**
- * Остров — кусок древа, не связанный с основным ни одной связью, — сам по себе
- * начинается с верхнего ряда: у его старшего нет родителей, значит, он «в шапке».
- * Так внук 2020 года рождения оказывался в одном ряду с прадедами. Поэтому каждый
- * остров сдвигаем целиком на столько рядов, чтобы годы рождения его людей легли
- * на годы соответствующих рядов основного древа. Основное — самый крупный кусок;
- * год ряда — медиана годов рождения его людей в этом ряду, для пустых рядов —
- * от соседних с шагом YEARS_PER_ROW. Остров без единой даты остаётся где был.
+ * An island — a piece of the tree not linked to the main one by a single link —
+ * starts from the top row on its own: its eldest has no parents, so they are "at
+ * the head". That is how a grandchild born in 2020 ended up in the same row as the
+ * great-grandparents. So we shift each island as a whole by as many rows as it
+ * takes for its people's years of birth to fall on the years of the corresponding
+ * rows of the main tree. The main one is the largest piece; a row's year is the
+ * median of the years of birth of its people in that row, and for empty rows it is
+ * taken from the neighbours in steps of YEARS_PER_ROW. An island without a single
+ * date stays where it was.
  */
 function alignIslandsByYear(state: TreeState, level: Record<string, number>): void {
   const comps = components(state).filter((c) => c.length > 1);
@@ -229,14 +234,14 @@ function alignIslandsByYear(state: TreeState, level: Record<string, number>): vo
     const y = year(id);
     if (y !== null) push(byRow, level[id], y);
   }
-  if (byRow.size < 2) return; // не с чем сравнивать
+  if (byRow.size < 2) return; // nothing to compare with
   const rows = [...byRow.keys()].sort((a, b) => a - b);
   const median = (xs: number[]) => xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)];
   const known = new Map(rows.map((r) => [r, median(byRow.get(r)!)]));
   const yearOfRow = (r: number): number => {
     const k = known.get(r);
     if (k !== undefined) return k;
-    // ближайший известный ряд и шаг в поколение
+    // the nearest known row and a step of one generation
     let best = rows[0];
     for (const q of rows) if (Math.abs(q - r) < Math.abs(best - r)) best = q;
     return known.get(best)! + (r - best) * YEARS_PER_ROW;
@@ -249,7 +254,7 @@ function alignIslandsByYear(state: TreeState, level: Record<string, number>): vo
     const [lo, hi] = extent(comp, (id) => level[id]);
     let bestShift = 0;
     let bestCost = Infinity;
-    // остров не выше шапки и не ниже ряда под последним рядом основного древа
+    // the island goes no higher than the head and no lower than the row below the main tree's last
     const maxRow = rows[rows.length - 1] + 1;
     for (let shift = -lo; shift <= maxRow - hi; shift++) {
       let cost = 0;
@@ -263,7 +268,7 @@ function alignIslandsByYear(state: TreeState, level: Record<string, number>): vo
   }
 }
 
-/** Связные куски древа — их раскладываем независимо и разносим по горизонтали. */
+/** The connected pieces of the tree — laid out independently and spread horizontally. */
 function components(state: TreeState): string[][] {
   const merge = new Merge<string>();
   for (const l of state.links) if (state.people[l.parent] && state.people[l.child]) merge.join(l.parent, l.child);
@@ -272,7 +277,7 @@ function components(state: TreeState): string[][] {
   return merge.parts(Object.keys(state.people)).sort((a, b) => oldest(a) - oldest(b));
 }
 
-/** Семейная ячейка: набор родителей и их общие дети. Брак без детей — тоже ячейка. */
+/** A family unit: a set of parents and their shared children. A childless marriage is a unit too. */
 function unions(state: TreeState, g: Graph, xhint: Record<string, number> | null): Unions {
   const srcX = (u: Union): number => {
     let s = 0;
@@ -297,7 +302,7 @@ function unions(state: TreeState, g: Graph, xhint: Record<string, number> | null
   const list = Object.keys(byKey).map((k) => byKey[k]);
 
   const byParent: Record<string, Union[]> = {};
-  // кто стоит вплотную: супруги — и явные братья с сёстрами, у них тот же малый зазор
+  // who stands tight together: spouses, and explicit siblings, who share the same small gap
   const pairGap: Record<string, 1> = {};
   for (const sb of state.sibs) {
     if (state.people[sb.a] && state.people[sb.b]) pairGap[[sb.a, sb.b].sort().join("|")] = 1;
@@ -313,7 +318,7 @@ function unions(state: TreeState, g: Graph, xhint: Record<string, number> | null
   }
 
   for (const u of list) {
-    // старшие слева, без дат — в порядке ввода
+    // the elder to the left, and those without dates in the order they were entered
     u.children.sort((a, b) => {
       const ka = birthKey(state.people[a]);
       const kb = birthKey(state.people[b]);
@@ -334,7 +339,7 @@ function unions(state: TreeState, g: Graph, xhint: Record<string, number> | null
   for (const p of Object.keys(byParent)) {
     byParent[p].sort((a, b) => {
       if (xhint) {
-        // второй проход: уже знаем, откуда пойдёт линия
+        // second pass: by now we know where the line will start from
         const d = srcX(a) - srcX(b);
         if (Math.abs(d) > 1) return d;
       }
@@ -349,7 +354,7 @@ function unions(state: TreeState, g: Graph, xhint: Record<string, number> | null
   };
 }
 
-/** Порядок в рядах: обход сверху вниз, пара и её дети держатся вместе. */
+/** The order within rows: a top-down traversal, a couple and its children stay together. */
 function orderRows(
   state: TreeState,
   ids: string[],
@@ -357,7 +362,7 @@ function orderRows(
   u: Unions,
   level: Record<string, number>,
   maxLevel: number,
-  /** сюда попадают те, кого обход поставил в ряд как ребёнка своей семьи, а не как супруга */
+  /** those the traversal put in the row as a child of their own family, not as a spouse */
   asChild: Set<string>,
 ): string[][] {
   const rows: string[][] = [];
@@ -370,16 +375,18 @@ function orderRows(
     if (seen[id] || !inSet[id]) return;
     seen[id] = 1;
     const uns = u.byParent[id] || [];
-    // У кого две семьи, тому одну ставим слева, другую справа: иначе линии к детям
-    // от разных супругов идут в одну сторону и перехлёстываются.
+    // Whoever has two families gets one to the left and the other to the right:
+    // otherwise the lines to the children of different spouses run the same way and
+    // tangle.
     if (uns.length > 1) for (const p of uns[0].parents) visit(p);
-    rows[level[id]].push(id); // место в своём ряду занимаем сразу
-    // Супруг встаёт в ряд первым. Если сначала уйти к родителям, их вторая родня
-    // (братья и сёстры человека) успеет занять места между супругами, и пара
-    // расползётся на полряда, а ребёнок повиснет между ними.
+    rows[level[id]].push(id); // we take our place in our own row straight away
+    // The spouse takes their place in the row first. If we went up to the parents
+    // first, their other kin (the person's siblings) would take the places between
+    // the spouses, the couple would sprawl across half a row and the child would
+    // hang between them.
     for (const un of u.byParent[id] || []) for (const p of un.parents) visit(p);
-    for (const sb of siblingsOf(state, id)) visit(sb); // явные братья и сёстры — рядом
-    for (const p of g.parents[id]) visit(p); // семья второй половины встаёт над ней
+    for (const sb of siblingsOf(state, id)) visit(sb); // explicit siblings stand next to them
+    for (const p of g.parents[id]) visit(p); // the other half's family stands above them
     for (const un of u.byParent[id] || []) {
       for (const c of un.children) {
         if (!seen[c]) asChild.add(c);
@@ -397,7 +404,7 @@ function orderRows(
 }
 
 export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
-  const state = visibleState(full); // скрытых для раскладки не существует
+  const state = visibleState(full); // as far as the layout is concerned, the hidden do not exist
   const gaps = gapsFor(state.gap || 1);
   const g = graphOf(state);
   const level = computeLevels(state, g);
@@ -411,7 +418,7 @@ export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
     if (level[id] > maxLevel) maxLevel = level[id];
   }
 
-  // высоты рядов и их Y
+  // row heights and their Y
   const rowH: number[] = [];
   const rowY: number[] = [];
   for (let l = 0; l <= maxLevel; l++) rowH[l] = 46;
@@ -422,9 +429,10 @@ export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
     y += rowH[l] + gaps.v;
   }
 
-  // Кого ещё не связали «родитель — ребёнок», тот не должен растягивать холст:
-  // такие уезжали за правый край древа на тысячи пикселей. Кладём их отдельным
-  // блоком под древом — и одиночек, и супругов, никуда пока не пристроенных.
+  // Anyone not yet tied by a "parent - child" link must not stretch the canvas:
+  // such people used to drift thousands of pixels past the tree's right edge. We
+  // put them in a separate block below the tree — both the lone ones and the
+  // spouses not yet placed anywhere.
   const tied = new Set<string>();
   for (const l of state.links) {
     if (state.people[l.parent] && state.people[l.child]) {
@@ -438,8 +446,8 @@ export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
     .filter((c) => !c.some((id) => tied.has(id)))
     .map((c) => c.slice().sort((a, b) => state.people[a].n - state.people[b].n));
 
-  // Кто пришёл в ряд ребёнком своей семьи: по этому решается, какой семье
-  // принадлежит пара «ребёнок + супруг», когда родители есть у обоих.
+  // Who came into the row as a child of their own family: this decides which family
+  // the "child + spouse" pair belongs to when both of them have parents.
   const asChild = new Set<string>();
   const orderAll = (u: Unions): string[][][] => {
     asChild.clear();
@@ -448,7 +456,7 @@ export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
     );
   };
 
-  /** Расстановка по x при уже известном порядке в рядах; от прежних x не зависит. */
+  /** Placement along x for an already known row order; it does not depend on the previous x. */
   const placeRows = (u: Unions, rowsByComp: string[][][]): void => {
     let offset = 0;
     rooted.forEach((compIds, ci) => {
@@ -469,13 +477,13 @@ export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
   placeRows(u, orderAll(u));
   const xhint: Record<string, number> = {};
   for (const id of Object.keys(pos)) xhint[id] = pos[id].x;
-  u = unions(state, g, xhint); // второй заход уже знает, откуда пойдут линии
+  u = unions(state, g, xhint); // the second pass already knows where the lines will start
   const rows = orderAll(u);
   placeRows(u, rows);
 
   for (const id of ids) pos[id].y = rowY[level[id]] + (rowH[level[id]] - pos[id].h) / 2;
 
-  /** Блок непристроенных под древом; зависит от того, где кончилось древо. */
+  /** The block of the unplaced below the tree; it depends on where the tree ended. */
   let lonePlate: { x: number; y: number; w: number } | null = null;
   const placeLoose = (): void => {
     lonePlate = null;
@@ -501,7 +509,7 @@ export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
     let cy = top + 26;
     let tall = 0;
     for (const comp of loose) {
-      // супругов не разрываем переносом строки
+      // we do not break a couple across a line
       const need = comp.length * NODE_W + (comp.length - 1) * gaps.couple;
       if (cx > x1 && cx + need > x1 + wide) {
         cx = x1;
@@ -520,15 +528,15 @@ export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
     lonePlate = { x: x1, y: top, w: wide };
   };
 
-  // Порядок обхода оставляет пересечения линий: спуск одной семьи попадает внутрь
-  // размаха шины другой. Переставляем людей в рядах и оставляем тот порядок, при
-  // котором пересечений меньше всего — считая их по той картинке, которую увидит
-  // пользователь: по годам карточки стоят иначе, чем по поколениям.
+  // The traversal order leaves lines crossing: one family's descent falls inside
+  // the span of another's bus. We reorder people within the rows and keep the order
+  // with the fewest crossings — counting them on the picture the user will actually
+  // see: by years the cards stand differently than by generations.
   const rootedIds = rooted.flat();
   const posRooted: Record<string, Box> = {};
   for (const id of rootedIds) posRooted[id] = pos[id];
   const view = (): Record<string, Box> => {
-    if (!state.timeline) return posRooted; // непристроенные ещё не расставлены
+    if (!state.timeline) return posRooted; // the unplaced have not been positioned yet
     placeLoose();
     const copy: Record<string, Box> = {};
     for (const id of ids) copy[id] = { ...pos[id] };
@@ -539,8 +547,9 @@ export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
   const genWidth = rootedIds.length ? gx2 - gx1 : 0;
   const placeBy = (r: string[][][]) => placeRows(u, r);
   const rounds = roundsFor(ids.length);
-  // По годам сначала ищем порядок, хороший по поколениям: он часто лучше исходного и
-  // там, а оценка по годам сама решит, брать ли его за отправную точку.
+  // By years we first look for an order that is good by generations: it is often
+  // better than the original there too, and the scoring by years will decide for
+  // itself whether to take it as a starting point.
   const starts: string[][][][] = [];
   if (state.timeline && rounds > 0) {
     starts.push(
@@ -562,7 +571,7 @@ export function layout(full: TreeState, lang: Lang = "ru"): LayoutResult {
   let tl: Timeline | null = null;
   if (state.timeline) tl = applyTimeline(state, g, level, pos, gaps);
 
-  // приколотые перетаскиванием карточки стоят там, где их оставили
+  // cards pinned by dragging stand where they were left
   for (const id of ids) {
     const p = state.people[id];
     if (typeof p.fx === "number" && typeof p.fy === "number") {

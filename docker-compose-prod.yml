@@ -1,0 +1,32 @@
+# Production compose for the remote machine. No build section here: the image is
+# built locally (or in CI) and shipped to the server as a tarball, so the server
+# never compiles anything and keeps no toolchain.
+#
+# There is no database and no volume on purpose. The server holds the tree in
+# memory: it arrives as a zip through "Upload archive" and leaves through
+# "Download archive". Nothing of yours is left on someone else's disk, and a
+# restart is a clean slate — so take the archive before you stop the container.
+services:
+  app:
+    image: genealogy_app:latest
+    container_name: genealogy_app
+    restart: always
+    environment:
+      # Basic auth. Compose refuses to start without them, so the tree can never
+      # end up on the open internet unprotected by accident.
+      GENEALOGY_USER: ${GENEALOGY_USER:?set GENEALOGY_USER in .env next to this file}
+      GENEALOGY_PASS: ${GENEALOGY_PASS:?set GENEALOGY_PASS in .env next to this file}
+    ports:
+      - "${GENEALOGY_PORT:-5179}:5179"
+    # Measured: ~19 MB idle, ~58 MB peak under load. 256 MB is roughly fourfold
+    # headroom and still small enough to sit next to other services.
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    # Cap the container's json logs so they cannot fill the disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

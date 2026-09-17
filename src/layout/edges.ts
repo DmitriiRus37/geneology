@@ -4,7 +4,7 @@ import { bracketY, leftRight, sideBySide } from "./couple.ts";
 import { rectOf, type Box } from "./layout.ts";
 import { CLEAR, polyPath, route, type Pt, type Rect } from "./route.ts";
 
-/** За какую связь отвечает линия — по ней собираем список того, что можно убрать. */
+/** Which link a line answers for — the list of what can be removed is built from it. */
 export type EdgeRef =
   | { kind: "child"; parents: string[]; child: string }
   | { kind: "leg"; parent: string; children: string[] }
@@ -22,7 +22,7 @@ interface Vert {
   gi: number;
 }
 
-/** Где горизонталь на высоте y пересекает вертикали чужих семей. */
+/** Where a horizontal at height y crosses the verticals of other families. */
 function crossAt(xa: number, xb: number, y: number, gi: number, verts: Vert[]): number[] {
   const lo = Math.min(xa, xb);
   const hi = Math.max(xa, xb);
@@ -50,16 +50,17 @@ interface Geo {
   sy: number;
   barY: number;
   flatY: number;
-  /** полоса, в которой шина имеет право стоять: низ родителей и верх детей */
+  /** the band the bus may stand in: the bottom of the parents and the top of the children */
   bandLo: number;
   bandHi: number;
 }
 
-/** Шины разных семей не должны сливаться: держим их по высоте не ближе этого. */
+/** The buses of different families must not merge: we keep them no closer than this in height. */
 const BUS_APART = 15;
 /**
- * Короче этого стрелка от шины к ребёнку не бывает: при малом просвете между рядами
- * четверть зазора давала 18 px вместе с наконечником — «слишком короткие стрелки».
+ * An arrow from the bus to a child is never shorter than this: with a small space
+ * between rows a quarter of the gap gave 18 px including the head — "arrows far too
+ * short".
  */
 const MIN_ARROW = 26;
 
@@ -88,7 +89,7 @@ export function computeEdges(
     if (!uni[key]) uni[key] = { parents: [pr.a, pr.b], children: [] };
   }
 
-  // все карточки — препятствия; свои концы у каждой линии исключаем
+  // every card is an obstacle; each line excludes its own two ends
   const cards = Object.keys(pos).map((id) => ({ id, r: rectOf(pos[id]) }));
   const obsExcept = (ids: string[]): Rect[] =>
     cards.filter((c) => ids.indexOf(c.id) < 0).map((c) => c.r);
@@ -103,11 +104,11 @@ export function computeEdges(
   const keys = Object.keys(uni).sort((a, b) => leftmost(a) - leftmost(b));
   const geo: Geo[] = [];
   const verts: Vert[] = [];
-  /** вертикали чужих связей: при обходе карточек к ним не прижимаемся */
+  /** the verticals of other links: we do not hug them while going round the cards */
   const others: number[] = [];
 
   keys.forEach((key, gi) => {
-    // проход 1: геометрия и все вертикали
+    // pass 1: the geometry and all the verticals
     const ps = uni[key].parents;
     const cs = uni[key].children;
     const hot = !!selected && (cs.indexOf(selected) > -1 || ps.indexOf(selected) > -1);
@@ -159,20 +160,21 @@ export function computeEdges(
     geo.push(G);
   });
 
-  // Шины семей, которые перекрываются по горизонтали, разводим по высоте.
-  // Раньше высота бралась по остатку от номера семьи — соседние всё равно
-  // попадали впритык и линии от разных родителей сливались в одну.
+  // The buses of families that overlap horizontally are spread apart in height.
+  // The height used to be taken from the remainder of the family number — adjacent
+  // ones still ended up flush and lines from different parents merged into one.
   //
-  // Полоса, где шина имеет право стоять, считается по всем карточкам под её
-  // размахом с тем же просветом CLEAR, что держит прокладка: иначе route() потом
-  // сдвигал поперечину сам, и разведённые шины снова сходились.
+  // The band a bus may stand in is computed over every card under its span, with
+  // the same CLEAR clearance the routing keeps: otherwise route() would shift the
+  // crossbar itself afterwards and the separated buses would converge again.
   //
-  // Кто ляжет выше, а кто ниже — не безразлично: если исток одной семьи попадает
-  // внутрь размаха шины другой, её шине место выше чужой (иначе спуск от родителей
-  // режет чужую шину), а если внутрь размаха попадает спуск к чужому ребёнку —
-  // ниже. Поэтому помеху обходим и вниз, и вверх — что дешевле по пересечениям, —
-  // а порядок укладки в каждой группе перекрывающихся шин выбирается перебором.
-  // При равенстве остаётся прежнее: вниз и в порядке естественной высоты.
+  // Which one lies above and which below is not a matter of indifference: if one
+  // family's source falls inside another's bus span, its bus belongs above the other
+  // (otherwise the descent from the parents cuts the other bus), and if a descent to
+  // someone else's child falls inside the span — below. So we go round an obstacle
+  // both downwards and upwards, whichever is cheaper on crossings, and the order of
+  // packing within each group of overlapping buses is chosen by enumeration. On a
+  // tie the old behaviour stands: downwards, and in order of natural height.
   const spanOf = (G: Geo): [number, number] => {
     const xs = [G.sx, ...G.cs.map((c) => pos[c].x)];
     return [Math.min(...xs), Math.max(...xs)];
@@ -190,7 +192,7 @@ export function computeEdges(
     if (!Number.isFinite(hi)) hi = G.bandHi;
     return lo <= hi ? [lo, hi] : [G.bandLo, G.bandHi];
   };
-  /** Вертикали семьи при шине на высоте y: исток (или ножки к узлу) и спуски к детям. */
+  /** A family's verticals with the bus at height y: the source (or the legs to the node) and the descents to the children. */
   const vertsAt = (F: Geo, y: number): [number, number, number][] => {
     const out: [number, number, number][] = [];
     if (F.bracket || F.ps.length === 1) out.push([F.sx, F.sy, y]);
@@ -205,7 +207,7 @@ export function computeEdges(
   const cut = (x1: number, x2: number, y: number, v: [number, number, number]): boolean =>
     v[0] > x1 + 2 && v[0] < x2 - 2 && y > Math.min(v[1], v[2]) + 2 && y < Math.max(v[1], v[2]) - 2;
   type Laid = { G: Geo; y: number; x1: number; x2: number };
-  /** Сколько раз шина G на высоте y и уже уложенные шины режут вертикали друг друга. */
+  /** How many times bus G at height y and the already packed buses cut each other's verticals. */
   const tanglesWith = (G: Geo, y: number, laid: Laid[]): number => {
     const [x1, x2] = spanOf(G);
     const mine = vertsAt(G, y);
@@ -218,11 +220,12 @@ export function computeEdges(
   };
   const bands = new Map<Geo, [number, number]>();
   /**
-   * Высота для G при уже уложенных шинах. Кандидаты — естественная высота и на
-   * BUS_APART выше и ниже каждой уложенной шины, с которой G перекрывается по x;
-   * берём свободную с наименьшим числом пересечений. При равенстве — естественная,
-   * потом ближайшая к ней, потом та, что ниже (так вела себя старая укладка).
-   * Полоса кончилась — к родителям: лучше так, чем слипшись.
+   * A height for G given the buses already packed. The candidates are the natural
+   * height and BUS_APART above and below every packed bus that G overlaps along x;
+   * we take the free one with the fewest crossings. On a tie: the natural height,
+   * then the nearest to it, then the lower one (that is how the old packing
+   * behaved). Once the band runs out — up to the parents: better that than stuck
+   * together.
    */
   const settle = (G: Geo, laid: Laid[]): number => {
     const [x1, x2] = spanOf(G);
@@ -273,7 +276,7 @@ export function computeEdges(
 
   const withKids = geo.filter((g) => g.cs.length).sort((a, b) => a.barY - b.barY);
   for (const G of withKids) bands.set(G, bandOf(G));
-  // группы: перекрываются по x и близки по естественной высоте
+  // groups: overlapping along x and close in natural height
   const overlap = new Merge<Geo>();
   for (let i = 0; i < withKids.length; i++) {
     const [a1, a2] = spanOf(withKids[i]);
@@ -316,7 +319,7 @@ export function computeEdges(
   for (const v of verts) others.push(v.x);
 
   for (const G of geo) {
-    // проход 2: рисуем с мостиками
+    // pass 2: we draw with the bridges
     const { gi, ps, cs, hot } = G;
     if (G.bracket) {
       const bp: Pt[] = [
@@ -340,7 +343,7 @@ export function computeEdges(
           G.flatY,
           obsExcept(ps),
           false,
-          // поперечина должна пройти под обеими карточками, а не сквозь них
+          // the crossbar must pass under both cards, not through them
           Math.max(pos[ps[0]].y + pos[ps[0]].h, pos[ps[1]].y + pos[ps[1]].h) + 4,
         );
         out.push({
@@ -371,11 +374,12 @@ export function computeEdges(
     }
     for (const cid of cs) {
       const c = pos[cid];
-      // сдвиг в пару пикселей давал некрасивый наклон — опускаем линию ровно на
-      // ребёнка. Но только если начало не заедет при этом под чужую карточку.
+      // a shift of a couple of pixels gave an ugly slope — we drop the line exactly
+      // onto the child. But only if the start does not slide under somebody else's
+      // card in the process.
       const obs = obsExcept(ps.concat([cid]));
-      // помехи проверяем по всем карточкам, включая родительские: под них
-      // начало линии заезжать не должно
+      // we check the obstacles over every card, the parents' included: the start of
+      // the line must not slide under those either
       const roomBelow = !cards.some(
         ({ r: o }) => c.x > o.x1 - 2 && c.x < o.x2 + 2 && G.sy > o.y1 - 2 && G.sy < o.y2 + 2,
       );
@@ -392,8 +396,9 @@ export function computeEdges(
     }
   }
 
-  // Явное родство «брат/сестра» — пунктир между карточками. Стоят рядом — на
-  // высоте середины, как скобка пары; разнесены — дужкой над рядом.
+  // An explicit "brother/sister" kinship is a dashed line between the cards. Side
+  // by side — at the middle height, like a couple's bracket; far apart — as an arc
+  // above the row.
   for (const sb of state.sibs || []) {
     if (!pos[sb.a] || !pos[sb.b]) continue;
     const [L, R] = leftRight(pos[sb.a], pos[sb.b]);

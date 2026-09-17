@@ -1,12 +1,13 @@
 /**
- * Метрики качества раскладки. Запуск:
+ * Layout quality metrics. To run:
  *
- *   node tools/metrics.ts            # на persons/ (ваши данные)
- *   node tools/metrics.ts seed       # на src/data/family.json (исходные 38)
- *   node tools/metrics.ts /путь/к/копии   # на копии данных: persons/ во время работы меняется
+ *   node tools/metrics.ts            # on persons/ (your data)
+ *   node tools/metrics.ts seed       # on src/data/family.json (the original 38)
+ *   node tools/metrics.ts /path/to/copy   # on a copy: persons/ changes while you work
  *
- * Мерить до и после правки обязательно: раскладка устроена так, что почти любое
- * улучшение одного числа портит другое. Числа на момент написания — в HANDOFF.md.
+ * Measuring before and after a change is mandatory: the layout is built in such a way
+ * that almost any improvement of one number spoils another. Quote the numbers rather than
+ * claiming an improvement.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -20,14 +21,14 @@ import { pairKey, type Pair, type TreeState } from "../src/model/types.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Древо из папки persons/ — так же, как его читает сервер. */
+/** The tree from the persons/ folder — read the same way the server reads it. */
 function fromFolder(dir: string): TreeState {
   const people: Record<string, unknown> = {};
   const links: { parent: string; child: string }[] = [];
   const pairs: Pair[] = [];
   const sibs: Pair[] = [];
   const seen = new Set<string>();
-  /** Взаимная связь записана у обоих — в древо она попадает один раз. */
+  /** A mutual link is recorded in both cards — it reaches the tree once. */
   const collect = (others: string[], id: string, kind: string, out: Pair[]) => {
     for (const b of others) {
       const key = kind + "|" + pairKey(id, b);
@@ -55,7 +56,7 @@ const source = (): TreeState =>
     ? normalize(JSON.parse(readFileSync(join(ROOT, "src/data/family.json"), "utf8")))
     : fromFolder(dir);
 
-/** Расстояние от отрезка до прямоугольника, 0 — касание или пересечение. */
+/** The distance from a segment to a rectangle; 0 means touching or crossing. */
 function distance(a: Pt, b: Pt, o: Rect): number {
   const toCorner = (px: number, py: number) =>
     Math.hypot(Math.max(o.x1 - px, 0, px - o.x2), Math.max(o.y1 - py, 0, py - o.y2));
@@ -73,7 +74,7 @@ for (const byYears of [false, true]) {
   const items = computeEdges(s, pos, level, null);
   const lines = items.filter((i) => i.kind === "path");
 
-  // карточки друг на друге
+  // cards on top of each other
   let overlaps = 0;
   for (let i = 0; i < ids.length; i++)
     for (let j = i + 1; j < ids.length; j++) {
@@ -83,10 +84,10 @@ for (const byYears of [false, true]) {
         overlaps++;
     }
 
-  // пересечения, сближенные шины и линии сквозь карточку — общей формулой с раскладкой
+  // crossings, buses too close and lines through a card — by the formula shared with the layout
   const st = edgeStats(items, rects);
 
-  // линия впритык к чужой карточке
+  // a line flush against somebody else's card
   let tight = 0;
   let gap = Infinity;
   for (const it of lines) {
@@ -115,7 +116,7 @@ for (const byYears of [false, true]) {
       }
   }
 
-  // линии наискось и стрелки к детям: отвесные против ступенькой
+  // slanted lines and the arrows to children: vertical versus stepped
   let slanted = 0;
   let straight = 0;
   let stepped = 0;
@@ -133,13 +134,13 @@ for (const byYears of [false, true]) {
   }
 
   const b = bboxOf(pos);
-  console.log(`\n=== ${byYears ? "по годам" : "по поколениям"} · людей ${ids.length} ===`);
-  console.log(`  наложений карточек ......... ${overlaps}`);
-  console.log(`  линий сквозь карточку ...... ${st.through}`);
-  console.log(`  отрезков ближе 5 px ........ ${tight} (минимальный зазор ${gap === Infinity ? "—" : gap.toFixed(1)} px)`);
-  console.log(`  линий наискось ............. ${slanted}`);
-  console.log(`  пересечений линий .......... ${st.crossings} (по путям), ${st.visual} (визуально)`);
-  console.log(`  пар шин ближе 12 px ........ ${st.busNear}`);
-  console.log(`  стрелок к детям ............ ${straight} отвесно, ${stepped} со ступенькой`);
-  console.log(`  размер древа ............... ${b ? Math.round(b.w) + " × " + Math.round(b.h) : "—"} px`);
+  console.log(`\n=== ${byYears ? "by years" : "by generations"} · people ${ids.length} ===`);
+  console.log(`  overlapping cards .......... ${overlaps}`);
+  console.log(`  lines through a card ....... ${st.through}`);
+  console.log(`  segments closer than 5 px .. ${tight} (smallest gap ${gap === Infinity ? "—" : gap.toFixed(1)} px)`);
+  console.log(`  slanted lines .............. ${slanted}`);
+  console.log(`  line crossings ............. ${st.crossings} (by paths), ${st.visual} (visually)`);
+  console.log(`  bus pairs closer than 12 px  ${st.busNear}`);
+  console.log(`  arrows to children ......... ${straight} vertical, ${stepped} stepped`);
+  console.log(`  tree size .................. ${b ? Math.round(b.w) + " × " + Math.round(b.h) : "—"} px`);
 }

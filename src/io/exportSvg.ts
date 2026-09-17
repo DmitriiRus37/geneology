@@ -1,7 +1,7 @@
 import type { BBox } from "../layout/layout.ts";
 import { download } from "./files.ts";
 
-/** Шрифты и цвета вшиваем в файл: картинка должна открываться где угодно. */
+/** Fonts and colours are sewn into the file: the picture must open anywhere. */
 const STYLE =
   "<style>" +
   ".link{fill:none;stroke:#7A8B9C;stroke-width:1.6}" +
@@ -24,7 +24,7 @@ const MARKERS =
   '<marker id="tipHot" viewBox="0 0 8 8" refX="6.6" refY="4" markerWidth="6.5" markerHeight="6.5" orient="auto">' +
   '<path d="M0.5 0.8 L7 4 L0.5 7.2 Z" fill="#7A8B9C"/></marker></defs>';
 
-/** Цвет холста: им заливается и картинка, и фон SVG. */
+/** The canvas colour: both the picture and the SVG background are filled with it. */
 const BACKDROP = "#F7F9FB";
 
 export interface Rendered {
@@ -33,7 +33,7 @@ export interface Rendered {
   h: number;
 }
 
-/** Берём то, что уже нарисовано на холсте, и заворачиваем в самостоятельный SVG. */
+/** We take what is already drawn on the canvas and wrap it into a standalone SVG. */
 export function renderSvg(b: BBox | null): Rendered | null {
   if (!b) return null;
   const edges = document.getElementById("edges");
@@ -43,7 +43,7 @@ export function renderSvg(b: BBox | null): Rendered | null {
   const w = Math.round(b.w + pad * 2);
   const h = Math.round(b.h + pad * 2);
   const clean = edges.cloneNode(true) as Element;
-  clean.querySelectorAll(".hit").forEach((el) => el.remove()); // прозрачные линии для щелчка в картинке не нужны
+  clean.querySelectorAll(".hit").forEach((el) => el.remove()); // the transparent click lines are not needed in a picture
   const inner = clean.outerHTML + nodes.outerHTML;
   const src =
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '">' +
@@ -64,8 +64,9 @@ export function exportSvgFile(b: BBox | null): boolean {
 }
 
 /**
- * Нарисовать готовый SVG на канве: этим живут и PNG, и PDF. Фон заливаем сами —
- * прозрачный PNG на белой бумаге выглядит не так, как древо на экране.
+ * Draw a finished SVG onto a canvas: both PNG and PDF live on this. We fill the
+ * background ourselves — a transparent PNG on white paper does not look like the tree on
+ * screen.
  */
 export function rasterize(r: Rendered, scale: number): Promise<HTMLCanvasElement> {
   return new Promise((res, rej) => {
@@ -75,14 +76,14 @@ export function rasterize(r: Rendered, scale: number): Promise<HTMLCanvasElement
       cv.width = Math.round(r.w * scale);
       cv.height = Math.round(r.h * scale);
       const ctx = cv.getContext("2d");
-      if (!ctx) return rej(new Error("нет canvas"));
+      if (!ctx) return rej(new Error("no canvas"));
       ctx.fillStyle = BACKDROP;
       ctx.fillRect(0, 0, cv.width, cv.height);
       ctx.scale(scale, scale);
       ctx.drawImage(img, 0, 0);
       res(cv);
     };
-    img.onerror = () => rej(new Error("картинка не собралась"));
+    img.onerror = () => rej(new Error("the picture did not come together"));
     img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(r.src);
   });
 }

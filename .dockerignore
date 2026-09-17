@@ -1,0 +1,15 @@
+# Only sources and the server go into the image: no one else's relatives, no builds.
+persons/
+persons_backup*/
+persons.zip
+node_modules/
+dist/
+.git/
+.github/
+.idea/
+.DS_Store
+*.log
+README.md
+CLAUDE.md
+tools/
+.env

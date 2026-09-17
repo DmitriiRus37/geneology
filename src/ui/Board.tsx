@@ -27,7 +27,7 @@ import { IDENTITY, type View } from "./view.ts";
 export interface BoardHandle {
   focusOn: (id: string) => void;
   fit: () => void;
-  /** открыть окно добавления по центру холста */
+  /** open the add window in the middle of the canvas */
   openAdd: (mode?: Relation, anchor?: string) => void;
 }
 
@@ -39,7 +39,7 @@ interface Props {
   ref?: Ref<BoardHandle>;
 }
 
-/** Место для окошка: где просили, но целиком в пределах холста. */
+/** A place for the popover: where it was asked for, but wholly inside the canvas. */
 const inBoard = (want: number, limit: number): number => Math.max(8, Math.min(want, Math.max(8, limit)));
 
 const PICK_TEXT: Record<Relation, string> = {
@@ -70,7 +70,7 @@ export function Board({ layout, filter, pick, onPickDone, ref }: Props) {
   const panning = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
   const moved = useRef(false);
 
-  /* ---------- вид ---------- */
+  /* ---------- the view ---------- */
 
   const applyZoom = useCallback((f: number, cx?: number, cy?: number) => {
     userMoved.current = true;
@@ -91,7 +91,7 @@ export function Board({ layout, filter, pick, onPickDone, ref }: Props) {
     const r = el ? el.getBoundingClientRect() : { width: 0, height: 0 };
     const pad = 46;
     if (r.width < 120 || r.height < 120) {
-      // холст ещё не разложен: getBoundingClientRect даёт нули, масштаб ушёл бы в минус
+      // the canvas is not laid out yet: getBoundingClientRect gives zeros and the zoom would go negative
       if (fitTries.current++ < 90) {
         requestAnimationFrame(fitView);
         return;
@@ -136,7 +136,7 @@ export function Board({ layout, filter, pick, onPickDone, ref }: Props) {
     [fitView],
   );
 
-  /** Подвести карточку в поле зрения, не трогая масштаб. */
+  /** Bring a card into view without touching the zoom. */
   const ensureVisible = useCallback((id: string) => {
     const b = layoutRef.current.pos[id];
     const el = svgRef.current;
@@ -160,13 +160,13 @@ export function Board({ layout, filter, pick, onPickDone, ref }: Props) {
     }
   }, []);
 
-  // «Вместить» по команде извне: загрузка файла, смена режима, «Расставить»
+  // "Fit" on a command from outside: loading a file, switching mode, "Rearrange"
   useEffect(() => {
     userMoved.current = false;
     fitView();
   }, [s.fitSeq, fitView]);
 
-  // новый человек или новая связь: масштаб оставляем, карточку показываем
+  // a new person or a new link: we keep the zoom and show the card
   const focusSeq = s.focus?.seq ?? 0;
   const focusId = s.focus?.id;
   useEffect(() => {
@@ -185,26 +185,26 @@ export function Board({ layout, filter, pick, onPickDone, ref }: Props) {
     return () => ro.disconnect();
   }, [fitView]);
 
-  // колесо и щипок — только нативными слушателями: React вешает их пассивными
+  // the wheel and the pinch go through native listeners only: React attaches them passive
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const r = el.getBoundingClientRect();
-      // Щипок на трекпаде браузер присылает тем же событием, но с ctrlKey.
-      // Всё остальное — двухпальцевый свайп или колесо — двигает полотно.
+      // The browser sends a trackpad pinch as the same event, only with ctrlKey.
+      // Everything else — a two-finger swipe or the wheel — moves the canvas.
       if (e.ctrlKey || e.metaKey) {
         const f = Math.max(1 / 1.5, Math.min(1.5, Math.exp(-e.deltaY * 0.01)));
         applyZoom(f, e.clientX - r.left, e.clientY - r.top);
         return;
       }
-      // deltaMode: 0 — пиксели, 1 — строки, 2 — экраны
+      // deltaMode: 0 is pixels, 1 is lines, 2 is screens
       const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? r.height : 1;
       let dx = e.deltaX * k;
       let dy = e.deltaY * k;
       if (e.shiftKey && !e.deltaX) {
-        dx = dy; // Shift с обычным колесом — вбок
+        dx = dy; // Shift with an ordinary wheel means sideways
         dy = 0;
       }
       if (!dx && !dy) return;
@@ -247,11 +247,11 @@ export function Board({ layout, filter, pick, onPickDone, ref }: Props) {
     };
   }, [applyZoom]);
 
-  /* ---------- указатель ---------- */
+  /* ---------- the pointer ---------- */
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     const t = e.target as Element;
-    if (t.closest(".handle")) return; // стрелки обрабатывают щелчок сами
+    if (t.closest(".handle")) return; // the arrows handle the click themselves
     const line = t.closest("[data-edge]") as SVGElement | null;
     if (line && !pick) {
       const item = edgesRef.current[Number(line.dataset.edge)];
@@ -323,7 +323,7 @@ export function Board({ layout, filter, pick, onPickDone, ref }: Props) {
     panning.current = null;
   };
 
-  /* ---------- данные для отрисовки ---------- */
+  /* ---------- the data for rendering ---------- */
 
   const pos = useMemo(() => {
     if (!dragPos) return layout.pos;
@@ -359,7 +359,7 @@ export function Board({ layout, filter, pick, onPickDone, ref }: Props) {
 
   const connectFromPop = (id: string, mode: Relation | null) => {
     if (!pop) return;
-    // без выбранного родства щелчок по подсказке просто показывает того, кто уже есть
+    // with no kinship chosen, a click on the hint simply shows whoever is already there
     if (mode && pop.anchor) d({ type: "connect", mode, from: pop.anchor, to: id });
     else d({ type: "select", id });
     setPop(null);

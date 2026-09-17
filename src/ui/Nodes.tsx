@@ -16,7 +16,7 @@ interface NodeProps {
 
 const Node = memo(function Node({ p, b, selected, dim, guess, src }: NodeProps) {
   const x = b.x - b.w / 2;
-  let ty = b.y + 15 + CHIP_BAND; // ниже полоски с жетоном
+  let ty = b.y + 15 + CHIP_BAND; // below the band with the chip
   const cls =
     "node" + (selected ? " sel" : "") + (dim ? " dim" : "") + (guess ? " est" : "") + (src ? " src" : "");
   return (

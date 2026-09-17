@@ -12,23 +12,23 @@ const bySex = <T extends Kin>(sex: Sex, m: T, f: T, u: T): T => (sex === "m" ? m
 
 export interface KinRow {
   id: string;
-  /** одному человеку может достаться несколько ролей сразу */
+  /** one person may end up with several roles at once */
   roles: Kin[];
   label: string;
-  /** родство записано явно (пунктиром), а не через общих родителей — его можно убрать */
+  /** the kinship is recorded explicitly (dashed) rather than through shared parents — it can be removed */
   explicit?: boolean;
 }
 
 /**
- * Кто кем приходится выбранному человеку. Смотрим только прямые связи —
- * родители, дети, супруги, — поэтому по древу никуда не идём и зациклиться
- * не на чем даже в запутанном родстве. Один и тот же человек может оказаться
- * сразу в нескольких ролях: тогда он показывается одной строкой с обеими.
+ * Who is who to the selected person. We look only at direct links — parents, children,
+ * spouses — so we walk nowhere across the tree and there is nothing to loop on even in
+ * the most tangled kinship. One and the same person may end up in several roles at once:
+ * then they are shown on one line with both.
  */
 export function kinOf(state: TreeState, id: string, lang: Lang = "ru"): KinRow[] {
   const roles = new Map<string, Kin[]>();
   const put = (who: string, role: Kin) => {
-    if (!who || who === id || !state.people[who]) return; // сам себе роднёй не бывает
+    if (!who || who === id || !state.people[who]) return; // nobody is kin to themselves
     const list = roles.get(who) ?? [];
     if (list.indexOf(role) < 0) list.push(role);
     roles.set(who, list);
@@ -55,5 +55,5 @@ export function kinOf(state: TreeState, id: string, lang: Lang = "ru"): KinRow[]
     .sort((a, b) => order.indexOf(a.roles[0]) - order.indexOf(b.roles[0]));
 }
 
-/** Подпись роли на нужном языке. */
+/** The role's caption in the required language. */
 export const kinLabel = (r: Kin, lang: Lang = "ru"): string => t(lang, "kin." + r);

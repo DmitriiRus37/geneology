@@ -40,7 +40,7 @@ export const parentsOf = (state: TreeState, id: string): string[] =>
 export const childrenOf = (state: TreeState, id: string): string[] =>
   state.links.filter((l) => l.parent === id).map((l) => l.child);
 
-/** Кто записан рядом с `id` в списке пар — и брак, и явное братство устроены одинаково. */
+/** Who is recorded next to `id` in a list of pairs — marriage and explicit siblinghood work alike. */
 function linkedIn(state: TreeState, list: Pair[], id: string): string[] {
   const out: string[] = [];
   for (const p of list) {
@@ -61,7 +61,7 @@ export function isDescendant(state: TreeState, ancestorId: string, id: string, s
 
 export type LinkResult = { ok: true; already?: boolean } | { ok: false; reason: Msg };
 
-/** Родитель → ребёнок. Петля («родитель уже ниже по древу») не создаётся. */
+/** Parent -> child. A loop ("the parent is already lower down the tree") is never created. */
 export function link(state: TreeState, parentId: string, childId: string): LinkResult {
   if (parentId === childId) return { ok: false, reason: msg("reason.selfParent") };
   if (!state.people[parentId] || !state.people[childId]) return { ok: false, reason: msg("reason.notFound") };
@@ -77,7 +77,7 @@ export type PairResult = { ok: true; already?: boolean } | { ok: false; reason: 
 
 const SAME_SEX = { m: "reason.bothMen", f: "reason.bothWomen" };
 
-/** Брак. Одного пола — отказываем; если пол хоть у одного не указан, не мешаем. */
+/** Marriage. Same sex is refused; if the sex of either one is unknown, we do not interfere. */
 export function addPair(state: TreeState, a: string, b: string): PairResult {
   if (!a || !b || a === b) return { ok: false, reason: msg("reason.selfSpouse") };
   const pa = state.people[a];
@@ -91,16 +91,16 @@ export function addPair(state: TreeState, a: string, b: string): PairResult {
   return { ok: true };
 }
 
-/** Готовые списки родителей и детей — раскладка их уже посчитала, незачем считать снова. */
+/** Ready lists of parents and children — the layout has counted them already, no point counting twice. */
 export interface Adjacency {
   parents: Record<string, string[]>;
   children: Record<string, string[]>;
 }
 
 /**
- * Супруги: и записанный брак, и просто общий ребёнок — обе связи равноправны.
- * Большинство пар в древе держится именно на общем ребёнке, отдельной записи
- * о браке у них нет.
+ * Spouses: a recorded marriage and simply a shared child are equal links. Most
+ * couples in the tree rest on the shared child alone and have no separate marriage
+ * record at all.
  */
 export function spousesOf(state: TreeState, id: string, adj?: Adjacency): string[] {
   const out = new Set(partnersOf(state, id));
@@ -110,11 +110,11 @@ export function spousesOf(state: TreeState, id: string, adj?: Adjacency): string
   return [...out];
 }
 
-/** Родные братья и сёстры, записанные явно (общих родителей в древе нет). */
+/** Siblings recorded explicitly (there are no shared parents in the tree). */
 export const siblingsOf = (state: TreeState, id: string): string[] =>
   linkedIn(state, state.sibs || [], id);
 
-/** Все братья и сёстры: и через общего родителя, и записанные явно. */
+/** All siblings: both through a shared parent and recorded explicitly. */
 export function allSiblingsOf(state: TreeState, id: string): string[] {
   const out = new Set(siblingsOf(state, id));
   for (const p of parentsOf(state, id)) for (const c of childrenOf(state, p)) if (c !== id) out.add(c);
@@ -122,8 +122,9 @@ export function allSiblingsOf(state: TreeState, id: string): string[] {
 }
 
 /**
- * Явное родство «брат/сестра». Нужно, когда общих родителей в древе нет: иначе
- * братьев проще связать с одними и теми же родителями — так делает «Добавить».
+ * An explicit "brother/sister" kinship. It is needed when there are no shared parents
+ * in the tree: otherwise it is simpler to tie the siblings to the same parents, which
+ * is what "Add" does.
  */
 export function addSibling(state: TreeState, a: string, b: string): PairResult {
   if (!a || !b || a === b) return { ok: false, reason: msg("reason.selfSibling") };
@@ -154,10 +155,11 @@ export function removePerson(state: TreeState, id: string): void {
 }
 
 /**
- * Кого скрыть, чтобы срезать древо вверх от человека: всех его предков, всё, что
- * растёт от них вниз (братьев, сестёр, двоюродных), и их супругов — кроме самого
- * человека, его потомков и супругов этих людей. Супруг остаётся со своей роднёй:
- * предки мужа — не предки жены.
+ * Who to hide in order to cut the tree upwards from a person: all of their ancestors,
+ * everything growing down from those (brothers, sisters, cousins) and those people's
+ * spouses — except the person themselves, their descendants and those descendants'
+ * spouses. A spouse stays with their own kin: the husband's ancestors are not the
+ * wife's.
  */
 export function cutAbove(state: TreeState, id: string): string[] {
   const parents = (x: string) => parentsOf(state, x);
@@ -192,7 +194,7 @@ export function cutAbove(state: TreeState, id: string): string[] {
   return [...hide];
 }
 
-/** Древо без скрытых: с ним работает раскладка, остальное про них не знает. */
+/** The tree without the hidden: the layout works on this, and the rest knows nothing of them. */
 export function visibleState(state: TreeState): TreeState {
   const hidden = new Set((state.hidden || []).filter((id) => state.people[id]));
   if (!hidden.size) return state;
@@ -215,7 +217,7 @@ export function clearPins(state: TreeState): void {
   }
 }
 
-/** Приводит что угодно из файла или хранилища к валидному состоянию. */
+/** Brings anything from a file or the store to a valid state. */
 export function normalize(raw: unknown): TreeState {
   const d = (raw || {}) as Record<string, unknown>;
   const s = emptyState();
@@ -229,7 +231,7 @@ export function normalize(raw: unknown): TreeState {
     let born = typeof p.born === "string" ? p.born : "";
     let died = typeof p.died === "string" ? p.died : "";
     if (!born && !died && typeof p.years === "string") {
-      // старый формат: одно поле «годы»
+      // the old format: a single "years" field
       const pr = splitRange(p.years);
       born = pr[0];
       died = pr[1];
@@ -239,8 +241,8 @@ export function normalize(raw: unknown): TreeState {
       name: String(p.name || "?"),
       maiden: typeof p.maiden === "string" ? p.maiden : "",
       alt: Array.isArray(p.alt) ? (p.alt as unknown[]).map(String) : [],
-      // голый год — «??.??.1970» и в старых записях тоже: приложение перепишет их
-      // на диск при первом же сохранении
+      // a bare year becomes "??.??.1970" in old records too: the app will rewrite them
+      // to disk on the very first save
       born: normalizeDateInput(born),
       died: normalizeDateInput(died),
       sex: p.sex === "m" || p.sex === "f" ? p.sex : "u",
@@ -259,7 +261,7 @@ export function normalize(raw: unknown): TreeState {
       s.links.push({ parent: l.parent, child: l.child });
     }
   }
-  /** Пары и явное братство лежат в файле одинаково — и читаются одинаково. */
+  /** Pairs and explicit siblinghood lie in the file alike — and are read alike. */
   const readPairs = (raw: unknown): Pair[] =>
     ((raw || []) as { a?: string; b?: string }[])
       .filter((p) => p && p.a && p.b && s.people[p.a] && s.people[p.b] && p.a !== p.b)

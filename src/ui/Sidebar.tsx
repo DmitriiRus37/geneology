@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { exportPdfFile } from "../io/exportPdf.ts";
 import { exportPngFile, exportSvgFile } from "../io/exportSvg.ts";
+import { downloadZip, uploadZip } from "../io/disk.ts";
 import { readJson, saveJson } from "../io/files.ts";
 import type { Where } from "../App.tsx";
 import type { BBox } from "../layout/layout.ts";
@@ -28,6 +29,7 @@ interface Props {
 export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoTo, bbox, where, onReread }: Props) {
   const { s, d, t, lang, setLang } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
+  const zipRef = useRef<HTMLInputElement>(null);
   const [min, setMin] = useState(false);
 
   const ids = Object.keys(s.tree.people);
@@ -97,13 +99,26 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
       </div>
 
       <div className="rail-foot">
-        <p className={"where " + (where?.kind === "disk" && where.blocked ? "stuck" : (where?.kind ?? ""))}>
+        <p
+          className={
+            "where " +
+            (where?.kind === "disk"
+              ? where.blocked
+                ? "stuck"
+                : where.store === "memory"
+                  ? "mem"
+                  : "disk"
+              : (where?.kind ?? ""))
+          }
+        >
           {where?.kind === "disk"
             ? where.blocked === "stale"
               ? t("where.stale")
               : where.blocked === "conflict"
                 ? t("where.conflict")
-                : t("where.disk", { dir: where.dir })
+                : where.store === "memory"
+                  ? t("where.memory")
+                  : t("where.disk", { dir: where.dir })
             : where?.kind === "browser"
               ? t("where.browser")
               : "…"}
@@ -129,6 +144,25 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
         <button className="quiet" onClick={() => fileRef.current?.click()}>
           {t("rail.openFile")}
         </button>
+        {/* An archive of cards. Uploading replaces the whole tree, so only a server
+            that keeps people in memory offers it: you will not wipe your own
+            persons/ folder with one click. Downloading works from anywhere. */}
+        {where?.kind === "disk" && where.store === "memory" && (
+          <button className="quiet" onClick={() => zipRef.current?.click()}>
+            {t("rail.uploadZip")}
+          </button>
+        )}
+        {where?.kind === "disk" && (
+          <button
+            className="quiet"
+            onClick={async () => {
+              const err = await downloadZip();
+              if (err) d({ type: "notice", msg: msg("notice.zipFailed", { detail: err }) });
+            }}
+          >
+            {t("rail.downloadZip")}
+          </button>
+        )}
         <button
           className="quiet"
           onClick={() => {
@@ -156,6 +190,24 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
         >
           {t("rail.pdf")}
         </button>
+        <input
+          ref={zipRef}
+          type="file"
+          accept=".zip,application/zip"
+          hidden
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (!f) return;
+            const r = await uploadZip(f);
+            if ("error" in r) {
+              d({ type: "notice", msg: msg("notice.zipFailed", { detail: r.error }) });
+              return;
+            }
+            const tree = normalize(r.tree);
+            d({ type: "load", tree, notice: msg("notice.zipLoaded", { n: Object.keys(tree.people).length }) });
+          }}
+        />
         <input
           ref={fileRef}
           type="file"

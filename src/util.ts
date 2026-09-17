@@ -1,16 +1,16 @@
 /**
- * Мелочи, которые иначе переписываются в каждом втором файле: списки по ключу,
- * среднее, размах, слияние в связные куски.
+ * Small things that would otherwise be rewritten in every other file: lists by key,
+ * the mean, the extent, merging into connected pieces.
  */
 
-/** Положить значение в список по ключу, заведя список при первом обращении. */
+/** Put a value into the list under a key, creating the list on first use. */
 export function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {
   const list = map.get(key);
   if (list) list.push(value);
   else map.set(key, [value]);
 }
 
-/** Среднее; пустой список — null, а не ноль: «родни нет» и «родня в нуле» разное. */
+/** The mean; an empty list gives null, not zero: "no kin" and "kin at zero" are different things. */
 export function mean(xs: number[]): number | null {
   if (!xs.length) return null;
   let s = 0;
@@ -18,7 +18,7 @@ export function mean(xs: number[]): number | null {
   return s / xs.length;
 }
 
-/** Наименьшее и наибольшее значение; пустой список — [Infinity, -Infinity]. */
+/** The smallest and the largest value; an empty list gives [Infinity, -Infinity]. */
 export function extent<T>(items: Iterable<T>, of: (item: T) => number): [number, number] {
   let lo = Infinity;
   let hi = -Infinity;
@@ -31,9 +31,9 @@ export function extent<T>(items: Iterable<T>, of: (item: T) => number): [number,
 }
 
 /**
- * Система непересекающихся множеств: ею собираются связные куски древа —
- * компоненты, родня одного поколения, перекрывающиеся шины. Сжатие путей
- * делается делением пополам, рекурсия на глубоком древе не нужна.
+ * A disjoint-set structure: it is what gathers the connected pieces of the tree —
+ * components, the kin of one generation, overlapping buses. Path compression is done by
+ * halving, so no recursion is needed on a deep tree.
  */
 export class Merge<T> {
   private up = new Map<T, T>();
@@ -56,7 +56,7 @@ export class Merge<T> {
     if (ra !== rb) this.up.set(ra, rb);
   }
 
-  /** Куски в порядке первого появления своих людей во входном списке. */
+  /** The pieces in order of the first appearance of their people in the input list. */
   parts(items: readonly T[]): T[][] {
     const byRoot = new Map<T, T[]>();
     for (const it of items) push(byRoot, this.root(it), it);

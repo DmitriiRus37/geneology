@@ -1,26 +1,26 @@
 /**
- * Геометрия пары, стоящей бок о бок. Ею пользуются и прокладка линий (скобка
- * между супругами, пунктир между братом и сестрой), и оценка порядка в рядах
- * («пара не разорвана») — условия должны совпадать, иначе раскладка считает
- * пару целой, а рисовать скобку уже негде.
+ * The geometry of a couple standing side by side. Both the line routing (the bracket
+ * between spouses, the dashed line between siblings) and the row-order scoring ("the
+ * couple is not broken") use it — the conditions must agree, otherwise the layout
+ * counts a couple as whole while there is nowhere left to draw the bracket.
  */
 import type { Box } from "./layout.ts";
 import { NODE_W } from "./measure.ts";
 
-/** Насколько две карточки перекрываются по высоте. */
+/** By how much two cards overlap in height. */
 export const overlapY = (A: Box, B: Box): number =>
   Math.min(A.y + A.h, B.y + B.h) - Math.max(A.y, B.y);
 
-/** Та же двойка, но слева направо. */
+/** The same pair, but left to right. */
 export const leftRight = (A: Box, B: Box): [Box, Box] => (A.x <= B.x ? [A, B] : [B, A]);
 
-/** Высота скобки между двумя карточками: середина, но не выше и не ниже их краёв. */
+/** The height of the bracket between two cards: the middle, but no higher and no lower than their edges. */
 export function bracketY(L: Box, R: Box): number {
   const cy = (L.y + L.h / 2 + R.y + R.h / 2) / 2;
   return Math.min(Math.max(cy, Math.max(L.y, R.y) + 12), Math.min(L.y + L.h, R.y + R.h) - 12);
 }
 
-/** Стоят ли двое бок о бок: вровень, рядом и никого между ними. */
+/** Whether two stand side by side: level, adjacent and with nobody between them. */
 export function sideBySide(
   pos: Record<string, Box>,
   level: Record<string, number>,
