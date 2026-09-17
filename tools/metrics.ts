@@ -1,0 +1,145 @@
+/**
+ * Метрики качества раскладки. Запуск:
+ *
+ *   node tools/metrics.ts            # на persons/ (ваши данные)
+ *   node tools/metrics.ts seed       # на src/data/family.json (исходные 38)
+ *   node tools/metrics.ts /путь/к/копии   # на копии данных: persons/ во время работы меняется
+ *
+ * Мерить до и после правки обязательно: раскладка устроена так, что почти любое
+ * улучшение одного числа портит другое. Числа на момент написания — в HANDOFF.md.
+ */
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { edgeStats } from "../src/layout/crossings.ts";
+import { computeEdges } from "../src/layout/edges.ts";
+import { bboxOf, layout, rectOf } from "../src/layout/layout.ts";
+import type { Pt, Rect } from "../src/layout/route.ts";
+import { normalize } from "../src/model/tree.ts";
+import { pairKey, type Pair, type TreeState } from "../src/model/types.ts";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** Древо из папки persons/ — так же, как его читает сервер. */
+function fromFolder(dir: string): TreeState {
+  const people: Record<string, unknown> = {};
+  const links: { parent: string; child: string }[] = [];
+  const pairs: Pair[] = [];
+  const sibs: Pair[] = [];
+  const seen = new Set<string>();
+  /** Взаимная связь записана у обоих — в древо она попадает один раз. */
+  const collect = (others: string[], id: string, kind: string, out: Pair[]) => {
+    for (const b of others) {
+      const key = kind + "|" + pairKey(id, b);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ a: id, b });
+    }
+  };
+  for (const n of readdirSync(dir)) {
+    if (!n.endsWith(".json") || n.startsWith("_")) continue;
+    const { parents = [], spouses = [], siblings = [], ...p } = JSON.parse(readFileSync(join(dir, n), "utf8"));
+    people[p.id] = p;
+    for (const q of parents) links.push({ parent: q, child: p.id });
+    collect(spouses, p.id, "sp", pairs);
+    collect(siblings, p.id, "sib", sibs);
+  }
+  return normalize({ people, links, pairs, sibs });
+}
+
+const arg = process.argv[2];
+const seed = arg === "seed";
+const dir = arg && !seed ? arg : join(ROOT, "persons");
+const source = (): TreeState =>
+  seed
+    ? normalize(JSON.parse(readFileSync(join(ROOT, "src/data/family.json"), "utf8")))
+    : fromFolder(dir);
+
+/** Расстояние от отрезка до прямоугольника, 0 — касание или пересечение. */
+function distance(a: Pt, b: Pt, o: Rect): number {
+  const toCorner = (px: number, py: number) =>
+    Math.hypot(Math.max(o.x1 - px, 0, px - o.x2), Math.max(o.y1 - py, 0, py - o.y2));
+  let m = Infinity;
+  for (let t = 0; t <= 1; t += 0.02) m = Math.min(m, toCorner(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t));
+  return m;
+}
+
+for (const byYears of [false, true]) {
+  const s = source();
+  s.timeline = byYears;
+  const { pos, level } = layout(s);
+  const ids = Object.keys(pos);
+  const rects = ids.map((id) => rectOf(pos[id]));
+  const items = computeEdges(s, pos, level, null);
+  const lines = items.filter((i) => i.kind === "path");
+
+  // карточки друг на друге
+  let overlaps = 0;
+  for (let i = 0; i < ids.length; i++)
+    for (let j = i + 1; j < ids.length; j++) {
+      const A = pos[ids[i]];
+      const B = pos[ids[j]];
+      if (Math.abs(A.x - B.x) < (A.w + B.w) / 2 - 0.5 && Math.max(A.y, B.y) < Math.min(A.y + A.h, B.y + B.h) - 0.5)
+        overlaps++;
+    }
+
+  // пересечения, сближенные шины и линии сквозь карточку — общей формулой с раскладкой
+  const st = edgeStats(items, rects);
+
+  // линия впритык к чужой карточке
+  let tight = 0;
+  let gap = Infinity;
+  for (const it of lines) {
+    if (it.kind !== "path") continue;
+    const ref = it.ref;
+    const own = new Set<string>();
+    if (ref?.kind === "child") {
+      ref.parents.forEach((p) => own.add(p));
+      own.add(ref.child);
+    }
+    if (ref?.kind === "leg") {
+      own.add(ref.parent);
+      ref.children.forEach((c) => own.add(c));
+    }
+    if (ref?.kind === "couple") {
+      own.add(ref.a);
+      own.add(ref.b);
+      ref.children.forEach((c) => own.add(c));
+    }
+    for (let i = 1; i < it.pts.length; i++)
+      for (const id of ids) {
+        if (own.has(id)) continue;
+        const d = distance(it.pts[i - 1], it.pts[i], rectOf(pos[id]));
+        if (d < 5) tight++;
+        gap = Math.min(gap, d);
+      }
+  }
+
+  // линии наискось и стрелки к детям: отвесные против ступенькой
+  let slanted = 0;
+  let straight = 0;
+  let stepped = 0;
+  for (const it of lines) {
+    if (it.kind !== "path") continue;
+    if (it.ref?.kind === "child") {
+      if (it.pts.length === 2 && Math.abs(it.pts[0].x - it.pts[1].x) < 0.6) straight++;
+      else stepped++;
+    }
+    for (let i = 1; i < it.pts.length; i++) {
+      const a = it.pts[i - 1];
+      const b = it.pts[i];
+      if (Math.abs(a.y - b.y) >= 0.6 && Math.abs(a.x - b.x) >= 0.6) slanted++;
+    }
+  }
+
+  const b = bboxOf(pos);
+  console.log(`\n=== ${byYears ? "по годам" : "по поколениям"} · людей ${ids.length} ===`);
+  console.log(`  наложений карточек ......... ${overlaps}`);
+  console.log(`  линий сквозь карточку ...... ${st.through}`);
+  console.log(`  отрезков ближе 5 px ........ ${tight} (минимальный зазор ${gap === Infinity ? "—" : gap.toFixed(1)} px)`);
+  console.log(`  линий наискось ............. ${slanted}`);
+  console.log(`  пересечений линий .......... ${st.crossings} (по путям), ${st.visual} (визуально)`);
+  console.log(`  пар шин ближе 12 px ........ ${st.busNear}`);
+  console.log(`  стрелок к детям ............ ${straight} отвесно, ${stepped} со ступенькой`);
+  console.log(`  размер древа ............... ${b ? Math.round(b.w) + " × " + Math.round(b.h) : "—"} px`);
+}

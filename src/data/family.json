@@ -1,0 +1,568 @@
+{
+  "people": {
+    "p1-f46o": {
+      "id": "p1-f46o",
+      "name": "Егор Якунин",
+      "maiden": "",
+      "alt": [],
+      "born": "1880-е гг.",
+      "died": "",
+      "sex": "m",
+      "n": 1
+    },
+    "p2-i832": {
+      "id": "p2-i832",
+      "name": "Иван Егорович Якунин",
+      "maiden": "",
+      "alt": [],
+      "born": "20.05.1902",
+      "died": "30.11.1985",
+      "sex": "m",
+      "n": 2
+    },
+    "p3-2hqu": {
+      "id": "p3-2hqu",
+      "name": "Анна Фёдоровна Якунина",
+      "maiden": "",
+      "alt": [
+        "Степановская"
+      ],
+      "born": "??.??.1904",
+      "died": "16.10.1959",
+      "sex": "f",
+      "n": 3
+    },
+    "p4-oimi": {
+      "id": "p4-oimi",
+      "name": "Николай Иванович Якунин",
+      "maiden": "",
+      "alt": [],
+      "born": "??.??.1927",
+      "died": "",
+      "sex": "m",
+      "n": 4
+    },
+    "p5-hn0r": {
+      "id": "p5-hn0r",
+      "name": "Анна Ивановна Лесняк",
+      "maiden": "Якунина",
+      "alt": [],
+      "born": "21.06.1929",
+      "died": "",
+      "sex": "f",
+      "n": 5
+    },
+    "p6-3cn1": {
+      "id": "p6-3cn1",
+      "name": "Алексей Иванович Якунин",
+      "maiden": "",
+      "alt": [],
+      "born": "28.02.1932",
+      "died": "17.10.2005",
+      "sex": "m",
+      "n": 6
+    },
+    "p7-hofb": {
+      "id": "p7-hofb",
+      "name": "Мария Ивановна Якунина",
+      "maiden": "",
+      "alt": [
+        "Панычева"
+      ],
+      "born": "осень 1938",
+      "died": "24.07.2018",
+      "sex": "f",
+      "n": 7
+    },
+    "p8-hl1o": {
+      "id": "p8-hl1o",
+      "name": "Александра Ивановна Якунина",
+      "maiden": "",
+      "alt": [],
+      "born": "25.12.1943",
+      "died": "",
+      "sex": "f",
+      "n": 8
+    },
+    "p9-64cy": {
+      "id": "p9-64cy",
+      "name": "Валентина Ивановна Якунина",
+      "maiden": "",
+      "alt": [
+        "Егизарова"
+      ],
+      "born": "",
+      "died": "",
+      "sex": "f",
+      "n": 9
+    },
+    "p10-kx62": {
+      "id": "p10-kx62",
+      "name": "Михаил Тихомиров",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "m",
+      "n": 10
+    },
+    "p11-oul7": {
+      "id": "p11-oul7",
+      "name": "Евдокия Тихомирова",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "f",
+      "n": 11
+    },
+    "p12-mlbi": {
+      "id": "p12-mlbi",
+      "name": "Елизавета Михайловна Тихомирова",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "f",
+      "n": 12
+    },
+    "p13-zcyw": {
+      "id": "p13-zcyw",
+      "name": "Александр Иванович Пеунов",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "m",
+      "n": 13
+    },
+    "p14-t7aw": {
+      "id": "p14-t7aw",
+      "name": "Алина Александровна Якунина",
+      "maiden": "Пеунова",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "f",
+      "n": 14
+    },
+    "p15-udub": {
+      "id": "p15-udub",
+      "name": "Раиса Алексеевна Стыраневская",
+      "maiden": "Якунина",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "f",
+      "n": 15
+    },
+    "p16-xxhs": {
+      "id": "p16-xxhs",
+      "name": "Татьяна Алексеевна Гурылева",
+      "maiden": "Якунина",
+      "alt": [],
+      "born": "01.05.1970",
+      "died": "",
+      "sex": "f",
+      "n": 16
+    },
+    "p17-3ab1": {
+      "id": "p17-3ab1",
+      "name": "Степан Андреевич Стыраневский",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "m",
+      "n": 17
+    },
+    "p18-10jp": {
+      "id": "p18-10jp",
+      "name": "Мария Степановна Стыраневская",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "f",
+      "n": 18
+    },
+    "p19-g2rl": {
+      "id": "p19-g2rl",
+      "name": "Сергей Николаевич Баранов",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "m",
+      "n": 19
+    },
+    "p20-g2x9": {
+      "id": "p20-g2x9",
+      "name": "Светлана Сергеевна Баранова",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "f",
+      "n": 20
+    },
+    "p21-6z94": {
+      "id": "p21-6z94",
+      "name": "Марина Владимировна Столярова",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "f",
+      "n": 21
+    },
+    "p22-ftix": {
+      "id": "p22-ftix",
+      "name": "Сергей Ликандрович Гурылев",
+      "maiden": "",
+      "alt": [],
+      "born": "19.04.1966",
+      "died": "",
+      "sex": "m",
+      "n": 22
+    },
+    "p23-m6h7": {
+      "id": "p23-m6h7",
+      "name": "Дмитрий Сергеевич Гурылев",
+      "maiden": "",
+      "alt": [],
+      "born": "01.12.1995",
+      "died": "",
+      "sex": "m",
+      "n": 23
+    },
+    "p24-8mic": {
+      "id": "p24-8mic",
+      "name": "Иван Иванович Лесняк",
+      "maiden": "",
+      "alt": [],
+      "born": "11.09.1934",
+      "died": "08.02.1988",
+      "sex": "m",
+      "n": 24
+    },
+    "p25-aj1k": {
+      "id": "p25-aj1k",
+      "name": "Леонид Иванович Лесняк",
+      "maiden": "",
+      "alt": [],
+      "born": "16.10.1957",
+      "died": "",
+      "sex": "m",
+      "n": 25
+    },
+    "p26-nxmf": {
+      "id": "p26-nxmf",
+      "name": "Лидия Лесняк",
+      "maiden": "",
+      "alt": [],
+      "born": "23.09.1957",
+      "died": "",
+      "sex": "f",
+      "n": 26
+    },
+    "p27-2hnq": {
+      "id": "p27-2hnq",
+      "name": "Елена Ивановна Лесняк",
+      "maiden": "",
+      "alt": [
+        "Громова"
+      ],
+      "born": "09.05.1960",
+      "died": "",
+      "sex": "f",
+      "n": 27
+    },
+    "p28-ekvk": {
+      "id": "p28-ekvk",
+      "name": "Иван Леонидович Лесняк",
+      "maiden": "",
+      "alt": [],
+      "born": "25.02.1983",
+      "died": "",
+      "sex": "m",
+      "n": 28
+    },
+    "p29-g6y4": {
+      "id": "p29-g6y4",
+      "name": "Анна Валерьевна",
+      "maiden": "",
+      "alt": [],
+      "born": "05.10.1975",
+      "died": "",
+      "sex": "f",
+      "n": 29
+    },
+    "p30-c010": {
+      "id": "p30-c010",
+      "name": "Марина Александровна Горбунова",
+      "maiden": "",
+      "alt": [],
+      "born": "21.09.1979",
+      "died": "",
+      "sex": "f",
+      "n": 30
+    },
+    "p31-2m9j": {
+      "id": "p31-2m9j",
+      "name": "Екатерина Александровна Громова",
+      "maiden": "",
+      "alt": [],
+      "born": "27.07.1990",
+      "died": "",
+      "sex": "f",
+      "n": 31
+    },
+    "p32-obil": {
+      "id": "p32-obil",
+      "name": "Артём Егизаров",
+      "maiden": "",
+      "alt": [],
+      "born": "",
+      "died": "",
+      "sex": "m",
+      "n": 32
+    },
+    "p33-tg5r": {
+      "id": "p33-tg5r",
+      "name": "Лариса Артёмовна Егизарова",
+      "maiden": "",
+      "alt": [
+        "Прокофьева"
+      ],
+      "born": "21.08.1970",
+      "died": "",
+      "sex": "f",
+      "n": 33
+    },
+    "p34-k1e8": {
+      "id": "p34-k1e8",
+      "name": "Сергей",
+      "maiden": "",
+      "alt": [],
+      "born": "01.09.1998",
+      "died": "",
+      "sex": "m",
+      "n": 34
+    },
+    "p35-9jrs": {
+      "id": "p35-9jrs",
+      "name": "Владимир",
+      "maiden": "",
+      "alt": [],
+      "born": "24.07.2000",
+      "died": "",
+      "sex": "m",
+      "n": 35
+    },
+    "p36-0vdl": {
+      "id": "p36-0vdl",
+      "name": "Надежда",
+      "maiden": "",
+      "alt": [],
+      "born": "??.??.1958",
+      "died": "",
+      "sex": "f",
+      "n": 36
+    },
+    "p37-79km": {
+      "id": "p37-79km",
+      "name": "Лидия",
+      "maiden": "",
+      "alt": [],
+      "born": "??.??.1970",
+      "died": "",
+      "sex": "f",
+      "n": 37
+    },
+    "p38-wq20": {
+      "id": "p38-wq20",
+      "name": "Мария Шолохова",
+      "maiden": "",
+      "alt": [],
+      "born": "1870-е гг.",
+      "died": "",
+      "sex": "f",
+      "n": 38
+    }
+  },
+  "links": [
+    {
+      "parent": "p1-f46o",
+      "child": "p2-i832"
+    },
+    {
+      "parent": "p2-i832",
+      "child": "p4-oimi"
+    },
+    {
+      "parent": "p2-i832",
+      "child": "p5-hn0r"
+    },
+    {
+      "parent": "p2-i832",
+      "child": "p6-3cn1"
+    },
+    {
+      "parent": "p2-i832",
+      "child": "p7-hofb"
+    },
+    {
+      "parent": "p2-i832",
+      "child": "p8-hl1o"
+    },
+    {
+      "parent": "p2-i832",
+      "child": "p9-64cy"
+    },
+    {
+      "parent": "p3-2hqu",
+      "child": "p4-oimi"
+    },
+    {
+      "parent": "p3-2hqu",
+      "child": "p5-hn0r"
+    },
+    {
+      "parent": "p3-2hqu",
+      "child": "p6-3cn1"
+    },
+    {
+      "parent": "p3-2hqu",
+      "child": "p7-hofb"
+    },
+    {
+      "parent": "p3-2hqu",
+      "child": "p8-hl1o"
+    },
+    {
+      "parent": "p3-2hqu",
+      "child": "p9-64cy"
+    },
+    {
+      "parent": "p5-hn0r",
+      "child": "p25-aj1k"
+    },
+    {
+      "parent": "p5-hn0r",
+      "child": "p27-2hnq"
+    },
+    {
+      "parent": "p6-3cn1",
+      "child": "p15-udub"
+    },
+    {
+      "parent": "p6-3cn1",
+      "child": "p16-xxhs"
+    },
+    {
+      "parent": "p7-hofb",
+      "child": "p36-0vdl"
+    },
+    {
+      "parent": "p7-hofb",
+      "child": "p37-79km"
+    },
+    {
+      "parent": "p9-64cy",
+      "child": "p33-tg5r"
+    },
+    {
+      "parent": "p10-kx62",
+      "child": "p12-mlbi"
+    },
+    {
+      "parent": "p11-oul7",
+      "child": "p12-mlbi"
+    },
+    {
+      "parent": "p12-mlbi",
+      "child": "p14-t7aw"
+    },
+    {
+      "parent": "p13-zcyw",
+      "child": "p14-t7aw"
+    },
+    {
+      "parent": "p14-t7aw",
+      "child": "p15-udub"
+    },
+    {
+      "parent": "p14-t7aw",
+      "child": "p16-xxhs"
+    },
+    {
+      "parent": "p15-udub",
+      "child": "p18-10jp"
+    },
+    {
+      "parent": "p16-xxhs",
+      "child": "p23-m6h7"
+    },
+    {
+      "parent": "p17-3ab1",
+      "child": "p18-10jp"
+    },
+    {
+      "parent": "p18-10jp",
+      "child": "p20-g2x9"
+    },
+    {
+      "parent": "p18-10jp",
+      "child": "p21-6z94"
+    },
+    {
+      "parent": "p19-g2rl",
+      "child": "p20-g2x9"
+    },
+    {
+      "parent": "p22-ftix",
+      "child": "p23-m6h7"
+    },
+    {
+      "parent": "p24-8mic",
+      "child": "p25-aj1k"
+    },
+    {
+      "parent": "p24-8mic",
+      "child": "p27-2hnq"
+    },
+    {
+      "parent": "p25-aj1k",
+      "child": "p28-ekvk"
+    },
+    {
+      "parent": "p27-2hnq",
+      "child": "p30-c010"
+    },
+    {
+      "parent": "p27-2hnq",
+      "child": "p31-2m9j"
+    },
+    {
+      "parent": "p32-obil",
+      "child": "p33-tg5r"
+    },
+    {
+      "parent": "p33-tg5r",
+      "child": "p34-k1e8"
+    },
+    {
+      "parent": "p33-tg5r",
+      "child": "p35-9jrs"
+    }
+  ],
+  "pairs": [
+    {
+      "a": "p25-aj1k",
+      "b": "p26-nxmf"
+    }
+  ],
+  "seq": 38,
+  "patch": 1
+}

@@ -1,0 +1,28 @@
+{
+  "name": "genealogy",
+  "private": true,
+  "version": "3.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && mv dist/index.html dist/genealogy.html",
+    "start": "npm run build && node server.mjs",
+    "serve": "node server.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}
