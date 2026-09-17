@@ -225,6 +225,85 @@ function recordAttempt(req, name, role) {
 
 loadAttempts();
 
+/* ------------------------------ where from ------------------------------- */
+
+/**
+ * Country and city behind an address. Three providers, tried in order: the first
+ * that answers wins, so one of them being down or rate-limiting costs nothing but
+ * a moment. (ip-api.com is deliberately absent — it is unreachable from this host.)
+ *
+ * Answers are remembered for as long as the process lives, and a failure is
+ * remembered only briefly so a provider having a bad minute does not leave an
+ * address unknown for good. Nothing is looked up until an administrator actually
+ * opens the page, and only for the rows shown.
+ */
+const GEO_SOURCES = [
+  {
+    host: "ipinfo.io",
+    url: (ip) => "https://ipinfo.io/" + ip + "/json",
+    read: (j) => (j.country ? { cc: j.country, city: j.city || "" } : null),
+  },
+  {
+    host: "geojs.io",
+    url: (ip) => "https://get.geojs.io/v1/ip/geo/" + ip + ".json",
+    read: (j) => (j.country_code ? { cc: j.country_code, city: j.city || "" } : null),
+  },
+  {
+    host: "ipwho.is",
+    url: (ip) => "https://ipwho.is/" + ip,
+    read: (j) => (j.success && j.country_code ? { cc: j.country_code, city: j.city || "" } : null),
+  },
+];
+
+const GEO = new Map(); // ip -> { cc, city } once somebody answered
+const GEO_MISS = new Map(); // ip -> when we gave up, so we can try again later
+const GEO_RETRY = 10 * 60e3;
+
+/** An address with no place on earth: nothing out there can tell us about it. */
+const isLocal = (ip) =>
+  !ip ||
+  ip === "-" ||
+  ip === "::1" ||
+  /^127\./.test(ip) ||
+  /^10\./.test(ip) ||
+  /^192\.168\./.test(ip) ||
+  /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ||
+  /^169\.254\./.test(ip) ||
+  /^f[cde]/i.test(ip);
+
+async function lookupGeo(ip) {
+  for (const src of GEO_SOURCES) {
+    try {
+      const r = await fetch(src.url(ip), { signal: AbortSignal.timeout(4000) });
+      if (!r.ok) continue;
+      const found = src.read(await r.json());
+      if (found) {
+        GEO.set(ip, found);
+        GEO_MISS.delete(ip);
+        return;
+      }
+    } catch {
+      /* down, slow or rate-limiting — the next one gets its turn */
+    }
+  }
+  GEO_MISS.set(ip, Date.now());
+}
+
+/** Resolve whatever among `ips` we do not know yet, a few at a time. */
+async function fillGeo(ips) {
+  const todo = [...new Set(ips)].filter(
+    (ip) => !isLocal(ip) && !GEO.has(ip) && !(Date.now() - (GEO_MISS.get(ip) ?? 0) < GEO_RETRY),
+  );
+  while (todo.length) await Promise.all(todo.splice(0, 8).map(lookupGeo));
+}
+
+const placeOf = (ip) => {
+  if (isLocal(ip)) return "—";
+  const g = GEO.get(ip);
+  if (!g) return "?";
+  return g.city ? g.city + ", " + g.cc : g.cc;
+};
+
 /**
  * Everything below is drawn into HTML, and the login field is filled in by
  * whoever is knocking — so nothing reaches the page unescaped.
@@ -239,9 +318,13 @@ const SHELL =
   ".sub{color:#93a2b3;font-size:12.5px;margin:0 0 18px}" +
   "a{color:#c08a2e}";
 
+/** How many rows the page draws at once; the rest stay in the file. */
+const ADMIN_ROWS = 500;
+
 /** The sign-in log: newest first, the refused ones marked. */
 function adminPage() {
-  const rows = attempts
+  const shown = attempts.slice(-ADMIN_ROWS);
+  const rows = shown
     .slice()
     .reverse()
     .map((a) => {
@@ -251,6 +334,7 @@ function adminPage() {
         "<td>" + esc(a.name || "—") + "</td>" +
         "<td class=ip>" + esc(a.ip) + "</td>" +
         "<td>" + who + "</td>" +
+        "<td class=geo>" + esc(placeOf(a.ip)) + "</td>" +
         "<td class=ua>" + esc(a.ua || "—") + "</td></tr>"
       );
     })
@@ -268,7 +352,8 @@ function adminPage() {
     "td{padding:5px 10px 5px 0;border-bottom:1px solid #232d3a;vertical-align:top}" +
     ".t{color:#93a2b3;white-space:nowrap}.ip{font-family:ui-monospace,Menlo,monospace}" +
     ".ok{color:#6aa84f}.no{color:#e9a79f}" +
-    ".ua{color:#6b7a89;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".ua{color:#6b7a89;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
+    ".geo{color:#93a2b3;white-space:nowrap}" +
     ".n{display:inline-block;margin-right:18px;color:#93a2b3;font-size:12.5px}" +
     ".n b{color:#e6ebf1;font-weight:600}" +
     "</style><h1>Who signed in</h1>" +
@@ -277,11 +362,13 @@ function adminPage() {
     '<a href="/">Tree</a> · <a href="/admin">Refresh</a>' +
     (LOG_DIR ? ' · <a href="/admin/logins.jsonl">Raw file</a>' : "") +
     ' · <a href="/logout">Log out</a></p>' +
-    '<p><span class="n">records <b>' + attempts.length + "</b></span>" +
+    '<p><span class="n">records <b>' + attempts.length +
+    (attempts.length > shown.length ? " <small>(newest " + shown.length + " shown)</small>" : "") +
+    "</b></span>" +
     '<span class="n">refused <b>' + refused + "</b></span>" +
     '<span class="n">addresses <b>' + ips + "</b></span></p>" +
-    "<table><tr><th>when (UTC)</th><th>login</th><th>address</th><th>result</th><th>browser</th></tr>" +
-    (rows || '<tr><td colspan=5 style="color:#6b7a89;padding-top:12px">Nobody yet.</td></tr>') +
+    "<table><tr><th>when (UTC)</th><th>login</th><th>address</th><th>result</th><th>where from</th><th>browser</th></tr>" +
+    (rows || '<tr><td colspan=6 style="color:#6b7a89;padding-top:12px">Nobody yet.</td></tr>') +
     "</table></html>"
   );
 }
@@ -863,6 +950,9 @@ const server = createServer(async (req, res) => {
     // Only the administrator, and only when there is one at all.
     if (req.url === "/admin") {
       if (role !== "admin") return page(res, 403, notForYou());
+      // only the addresses actually about to be drawn, and never at anyone else's
+      // request: a stranger signing in does not send their address anywhere
+      await fillGeo(attempts.slice(-ADMIN_ROWS).map((a) => a.ip));
       return page(res, 200, adminPage());
     }
     if (req.url === "/admin/logins.jsonl") {

@@ -144,9 +144,17 @@ was let through, and which browser. The newest 10 000 (`GENEALOGY_ATTEMPTS` chan
 are kept as `logs/logins.jsonl` next to the request log — one JSON object per line,
 `{"when":…,"login":…,"address":…,"result":…,"browser":…}` — so a restart or a redeploy does
 not lose them, and the page links to the raw file. JSON does the escaping, so nothing the
-login field can carry will forge a record or break a line. The administrator lands on
-`/admin` straight after signing in and can still open the tree. Without those two variables
-the page exists for nobody.
+login field can carry will forge a record or break a line.
+
+Each row also shows where the address is, roughly — `Warsaw, PL`. That comes from
+ipinfo.io, with get.geojs.io and ipwho.is behind it: the first to answer wins, so one being
+down or rate-limiting costs nothing. Answers are remembered for as long as the server runs.
+Nothing is looked up until an administrator opens the page, and only for the rows on it — a
+stranger signing in does not send their address anywhere. Private and loopback addresses are
+never looked up at all. The table draws the newest 500; the file holds the rest.
+
+The administrator lands on `/admin` straight after signing in and can still open the tree.
+Without those two variables the page exists for nobody.
 
 ```bash
 make check                                   # typecheck and tests
@@ -459,6 +467,14 @@ zip-архивом кнопкой **«Загрузить архив»**, пра�
 по объекту JSON на строку, `{"when":…,"login":…,"address":…,"result":…,"browser":…}`, — так что
 перезапуск и выкладка их не теряют, а со страницы файл открывается как есть. Экранирует сам
 JSON: что бы ни набрали в поле логина, подделать запись или разорвать строку не выйдет.
+
+В каждой строке видно и примерное место адреса — `Warsaw, PL`. Его спрашивают у ipinfo.io, а
+за ним стоят get.geojs.io и ipwho.is: отвечает первый откликнувшийся, так что недоступность
+одного ничего не стоит. Ответы помнятся, пока сервер жив. Пока администратор не откроет
+страницу, никто никуда не ходит, и спрашивают только про строки на ней — вошедший не
+отправляет свой адрес наружу. Локальные адреса не спрашивают вовсе. В таблице рисуются
+последние 500 записей, остальные остаются в файле.
+
 Администратор попадает на `/admin` сразу после входа и по-прежнему может открыть древо. Без
 этих двух переменных страницы нет ни для кого.
 

@@ -18,7 +18,10 @@ a session cookie that dies with the process, tools keep using HTTP Basic.
 `GENEALOGY_ADMIN_USER`/`GENEALOGY_ADMIN_PASS` add a second account, the only one allowed on
 `/admin`, which lists the last `GENEALOGY_ATTEMPTS` (10000) sign-ins and attempts. They are
 kept in `LOG_DIR/logins.jsonl`, one JSON object per line, and survive a restart; the login
-field is filled in by strangers, so it is HTML-escaped on the page and JSON does the rest;
+field is filled in by strangers, so it is HTML-escaped on the page and JSON does the rest.
+The page also resolves addresses to a country and city through `GEO_SOURCES` (ipinfo.io,
+then get.geojs.io, then ipwho.is — first to answer wins), cached in memory, only when an
+admin opens the page and only for the rows shown;
 `--host`/`HOST` sets the bind address, still `127.0.0.1` by default. `/api/health` is the
 only route outside the guard. `LOG_DIR` turns on the request log (one line per request,
 no headers and no bodies); it rotates itself at `LOG_MAX` (10 MB) keeping `LOG_KEEP` (3)
