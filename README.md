@@ -7,22 +7,65 @@ Node server behind it. The tree is built with the mouse: select a person and the
 arrows for "parent", "child", "spouse" and "sibling". Every edit is written to disk at once,
 one JSON file per person.
 
-### Quick start
+### Requirements
 
-```bash
-npm install
-npm start
-```
+- **Node.js 22.12 or newer** (24 LTS recommended). It comes with `npm`; nothing else is
+  needed. `npm test` needs Node 24 or newer.
+- A modern browser: Chrome, Safari, Firefox or Edge.
+- `git` is optional: the code can be downloaded as a ZIP archive.
 
-This builds the app and serves it at http://127.0.0.1:5179. Stop with `Ctrl+C`. The server
-listens on `127.0.0.1` only: it writes to your file system and must not be reachable from
-the network.
+### Install and run from scratch
+
+1. **Install Node.js** if `node -v` in a terminal prints nothing or an error.
+   - macOS: download the LTS installer from https://nodejs.org and run it, or
+     `brew install node` if Homebrew is installed.
+   - Windows: download the LTS installer from https://nodejs.org and run it, or
+     `winget install OpenJS.NodeJS.LTS`. Then open a new terminal window (PowerShell or
+     Command Prompt): the one opened before the installation does not see `npm`.
+   - Linux: distribution packages are often old; take the LTS build from https://nodejs.org
+     or install it through `nvm`.
+   - Check: `node -v` prints `v22.12.0` or higher, `npm -v` prints a version.
+2. **Get the code.**
+   - With git: `git clone https://github.com/DmitriiRus37/geneology.git`, then
+     `cd geneology`.
+   - Without git: open https://github.com/DmitriiRus37/geneology, press **Code → Download
+     ZIP**, unpack it and open a terminal in the unpacked folder (macOS: right-click the
+     folder in Finder → Services → New Terminal at Folder; Windows: Shift + right-click
+     inside the folder → Open PowerShell window here).
+3. **Install the dependencies** once, with internet access: `npm install`.
+4. **Start**: `npm start`. The first start builds the app (a few seconds) and prints
+   `http://127.0.0.1:5179`. Open that address in the browser.
+5. On the first start the `persons/` folder is created next to the code and filled with a
+   small sample tree. Delete the sample people in the app to start your own tree, or keep
+   them to look around first.
+6. **Stop** the server with `Ctrl+C` in the terminal. Your data stays in `persons/`.
+7. **Run again later**: `npm start` (rebuilds and serves), or `npm run serve` when nothing
+   changed since the last build.
+8. **Update to a newer version**: `git pull`, then `npm install` and `npm start`. Without
+   git: unpack the new ZIP and move your `persons/` folder into it; the folder is not part
+   of the repository, so nothing overwrites it.
+
+The server listens on `127.0.0.1` only: it writes to your file system and must not be
+reachable from the network.
 
 ```bash
 npm run serve                          # serve an already built app, no rebuild
 node server.mjs --dir /path/to/folder  # keep the data somewhere else
 node server.mjs --port 8080            # another port
 ```
+
+### If something goes wrong
+
+- `npm: command not found` or `'npm' is not recognized` — Node.js is not installed, or the
+  terminal was opened before the installation. Install Node and open a new terminal.
+- Windows PowerShell says `running scripts is disabled on this system` — use `npm.cmd`
+  instead of `npm` (`npm.cmd install`, `npm.cmd start`), or allow scripts once with
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+- `EADDRINUSE`: port 5179 is busy — `npm run build`, then `node server.mjs --port 8080`.
+- The page opens but looks old — reload it bypassing the cache (⌘⇧R on macOS, Ctrl+F5
+  elsewhere) after `npm start`.
+- `npm install` fails with a network error — the machine has no internet access or a
+  proxy blocks https://registry.npmjs.org; the installation needs it once.
 
 ### Where the data lives
 
@@ -76,7 +119,8 @@ open dist/genealogy.html
 
 `dist/genealogy.html` is a self-contained page with React, styles and data inside. It
 opens with a double click and works offline, but it does not write to disk: the tree lives
-in browser memory. The bottom of the side panel always says where edits go: a green dot
+in browser memory. The file is enough on its own: copy it to any computer, even one without
+Node.js, and open it in a browser. The bottom of the side panel always says where edits go: a green dot
 means `persons/`, a yellow one means the browser. Move a tree between the two modes with
 "Save to file" and "Open file".
 
@@ -88,7 +132,7 @@ npm run dev         # terminal 2: Vite with hot reload on 5178, /api is proxied 
 ```
 
 ```bash
-npm test                        # unit tests: dates, names, layout, row order, bus stacking, tree actions, dictionary
+npm test                        # unit tests (Node 24+): dates, names, layout, row order, bus stacking, tree actions, dictionary
 npm run typecheck
 node tools/metrics.ts           # layout quality metrics on persons/
 node tools/metrics.ts /path/to/copy   # the same on a copy of the data
@@ -205,14 +249,44 @@ it replaces one coordinate.
 стрелки «родитель», «ребёнок», «супруг» и «брат/сестра». Каждая правка тут же ложится на
 диск, по файлу на человека.
 
-### Запуск
+### Что нужно
 
-```bash
-npm install
-npm start
-```
+- **Node.js 22.12 или новее** (лучше 24 LTS). Вместе с ним ставится `npm`; больше ничего
+  не нужно. Для `npm test` нужен Node 24 или новее.
+- Современный браузер: Chrome, Safari, Firefox или Edge.
+- `git` не обязателен: код можно скачать ZIP-архивом.
 
-Соберёт приложение и поднимет сервер на http://127.0.0.1:5179. Остановить — `Ctrl+C`.
+### Установка и запуск с нуля
+
+1. **Поставьте Node.js**, если `node -v` в терминале ничего не печатает или даёт ошибку.
+   - macOS: скачайте установщик LTS с https://nodejs.org и запустите, либо
+     `brew install node`, если стоит Homebrew.
+   - Windows: скачайте установщик LTS с https://nodejs.org и запустите, либо
+     `winget install OpenJS.NodeJS.LTS`. Потом откройте новое окно терминала (PowerShell
+     или командная строка): открытое до установки `npm` не видит.
+   - Linux: пакеты дистрибутива часто старые; берите LTS-сборку с https://nodejs.org или
+     ставьте через `nvm`.
+   - Проверка: `node -v` печатает `v22.12.0` или выше, `npm -v` печатает версию.
+2. **Получите код.**
+   - С git: `git clone https://github.com/DmitriiRus37/geneology.git`, затем
+     `cd geneology`.
+   - Без git: откройте https://github.com/DmitriiRus37/geneology, нажмите **Code → Download
+     ZIP**, распакуйте и откройте терминал в распакованной папке (macOS: правый щелчок по
+     папке в Finder → Службы → Новый терминал в папке; Windows: Shift + правый щелчок внутри
+     папки → Открыть окно PowerShell здесь).
+3. **Поставьте зависимости** — один раз, нужен интернет: `npm install`.
+4. **Запустите**: `npm start`. Первый запуск соберёт приложение (несколько секунд) и
+   напечатает `http://127.0.0.1:5179`. Откройте этот адрес в браузере.
+5. При первом запуске рядом с кодом появится папка `persons/` с небольшим образцовым
+   древом. Удалите образцовых людей в приложении, чтобы начать своё древо, или сначала
+   осмотритесь на них.
+6. **Остановить** сервер — `Ctrl+C` в терминале. Данные остаются в `persons/`.
+7. **Запустить снова**: `npm start` (пересобирает и запускает) или `npm run serve`, если с
+   прошлой сборки ничего не менялось.
+8. **Обновиться до новой версии**: `git pull`, затем `npm install` и `npm start`. Без git:
+   распакуйте новый ZIP и перенесите в него свою папку `persons/` — она не входит в
+   репозиторий, и ничто её не перезапишет.
+
 Сервер слушает только `127.0.0.1`: он пишет в вашу файловую систему, из сети его быть не
 должно.
 
@@ -221,6 +295,20 @@ npm run serve                          # уже собранное прилож�
 node server.mjs --dir /путь/к/папке    # держать данные в другом месте
 node server.mjs --port 8080            # другой порт
 ```
+
+### Если что-то не так
+
+- `npm: command not found` или `"npm" не является внутренней или внешней командой` —
+  Node.js не установлен или терминал открыт до установки. Поставьте Node и откройте новый
+  терминал.
+- PowerShell пишет `выполнение сценариев отключено в этой системе` — вместо `npm` пишите
+  `npm.cmd` (`npm.cmd install`, `npm.cmd start`) либо один раз разрешите сценарии:
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+- `EADDRINUSE`: порт 5179 занят — `npm run build`, затем `node server.mjs --port 8080`.
+- Страница открылась, но выглядит по-старому — перезагрузите её без кэша (⌘⇧R на macOS,
+  Ctrl+F5 в остальных) после `npm start`.
+- `npm install` падает с сетевой ошибкой — нет интернета или прокси не пускает к
+  https://registry.npmjs.org; установке он нужен один раз.
 
 ### Где лежат данные
 
@@ -274,7 +362,8 @@ open dist/genealogy.html
 
 `dist/genealogy.html` — самодостаточный HTML со всем внутри: React, стили, данные.
 Открывается двойным щелчком, работает офлайн — но на диск не пишет, хранит древо в памяти
-браузера. Внизу панели всегда написано, куда уходят правки: зелёная точка — в `persons/`,
+браузера. Файла достаточно самого по себе: скопируйте его на любой компьютер, даже без
+Node.js, и откройте в браузере. Внизу панели всегда написано, куда уходят правки: зелёная точка — в `persons/`,
 жёлтая — в браузер. Переносить древо между режимами — кнопками «Сохранить в файл» и
 «Открыть файл».
 
@@ -286,7 +375,7 @@ npm run dev         # в другом: vite с горячей перезагру
 ```
 
 ```bash
-npm test                        # тесты: даты, имена, раскладка, порядок в рядах, укладка шин, действия над древом, словарь
+npm test                        # тесты (Node 24+): даты, имена, раскладка, порядок в рядах, укладка шин, действия над древом, словарь
 npm run typecheck
 node tools/metrics.ts           # метрики качества раскладки на persons/
 node tools/metrics.ts /путь/к/копии   # то же на копии данных
