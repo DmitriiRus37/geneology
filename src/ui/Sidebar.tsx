@@ -163,6 +163,19 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
             {t("rail.downloadZip")}
           </button>
         )}
+        {/* Wipes the whole tree, for everyone who logs in with the same password —
+            the server keeps one tree, not one per visitor. Undo still brings it
+            back until the page is reloaded, so the archive is the real safety net. */}
+        {!!ids.length && (
+          <button
+            className="quiet danger"
+            onClick={() => {
+              if (confirm(t("confirm.clear", { n: ids.length }))) d({ type: "wipe" });
+            }}
+          >
+            {t("rail.clear")}
+          </button>
+        )}
         <button
           className="quiet"
           onClick={() => {

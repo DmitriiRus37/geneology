@@ -57,11 +57,16 @@ export function App() {
       setWhere({ kind: "disk", dir: info.dir, store: info.store, blocked: info.stale ? "stale" : null });
       if (info.tree && Object.keys(info.tree.people).length) {
         d({ type: "load", tree: normalize(info.tree), silent: true });
+      } else if (info.store === "memory") {
+        // A server that keeps people in memory starts empty and stays empty until
+        // an archive is uploaded. Seeding it with the sample tree would put names
+        // on a machine that was never meant to hold them.
+        d({ type: "load", tree: normalize({}), silent: true });
       } else if (!info.stale) {
-        // The store is empty — we seed it with whatever is open. We mark the tree as
-        // sent straight away: otherwise the autosave would get a second request out
-        // behind it, still carrying the old fingerprint, and answer itself with a
-        // conflict.
+        // The folder is empty — we seed it with whatever is open. We mark the tree
+        // as sent straight away: otherwise the autosave would get a second request
+        // out behind it, still carrying the old fingerprint, and answer itself with
+        // a conflict.
         lastSaved.current = treeRef.current;
         void saveDisk(treeRef.current);
       }

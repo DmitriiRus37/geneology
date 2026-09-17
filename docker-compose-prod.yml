@@ -18,6 +18,12 @@ services:
       GENEALOGY_PASS: ${GENEALOGY_PASS:?set GENEALOGY_PASS in .env next to this file}
     ports:
       - "${GENEALOGY_PORT:-5179}:5179"
+    # Request log, one line per request, rotated by the server itself at 10 MB
+    # with three gzipped files kept. Bind-mounted so it survives a redeploy and
+    # can be read straight from the host. It holds paths, statuses and client
+    # addresses — never the tree, never the password.
+    volumes:
+      - ./logs:/app/logs
     # Measured: ~19 MB idle, ~58 MB peak under load. 256 MB is roughly fourfold
     # headroom and still small enough to sit next to other services.
     deploy:

@@ -128,9 +128,13 @@ means `persons/`, a yellow one means the browser. Move a tree between the two mo
 
 The same app can run on a server, in Docker. There it works differently on purpose: the
 tree lives **in the container's memory** and never touches the server's disk. You bring it
-in as a zip archive with **Upload archive**, edit it, and take it away with **Download
-archive**. A restart, a reboot or a deploy leaves a clean slate, so nothing of your family
-stays on a machine you do not own.
+in as a zip archive with **Upload archive**, edit it, take it away with **Download archive**
+and wipe it with **Clear**. A restart, a reboot or a deploy leaves a clean slate, so nothing
+of your family stays on a machine you do not own. A fresh instance comes up genuinely empty:
+the sample tree is stripped out of the image, so the page carries nobody's names.
+
+The server holds one tree, not one per visitor: everyone who logs in with the same password
+sees the same people, and **Clear** empties it for all of them at once.
 
 ```bash
 make check                                   # typecheck and tests
@@ -147,14 +151,29 @@ GENEALOGY_USER=fam GENEALOGY_PASS='<tree password>' make deploy
 
 The image is built here and shipped as a tarball; the server only loads it and starts the
 container — it compiles nothing and keeps no toolchain. `GENEALOGY_USER` and
-`GENEALOGY_PASS` guard the service with HTTP Basic auth, and compose refuses to start
-without them, so the tree cannot end up on the open internet unprotected by accident.
+`GENEALOGY_PASS` guard the service, and compose refuses to start without them, so the tree
+cannot end up on the open internet unprotected by accident. A browser is sent to a login
+page at `/login` and gets a session cookie that lasts until the server restarts; `/logout`
+drops it. Tools keep using HTTP Basic, so `curl -u`, `make backup` and `make smoke` work
+unchanged.
 
 Because the tree is in memory, **a deploy wipes it**. Take the archive first and put it
 back afterwards:
 
 ```bash
 make backup                                  # writes backups/persons_<date>.zip, keeps five
+```
+
+The server writes one line per request into `logs/access.log` next to the compose file —
+timestamp, client address, method, path, status, whether credentials were offered
+(`auth` or `-`, never the password itself), duration and user agent. At 10 MB it
+rotates itself: the file is gzipped into `access.log.1.gz`, the older ones shift up and
+anything past the third is dropped, so the log can never fill the disk. Headers and bodies
+never reach it, so neither the password nor the tree is in there.
+
+```bash
+make applog                                  # the last lines, and what rotation kept
+make applog_grep PATTERN=192.0.2.7           # search the gzipped history too
 ```
 
 Two things worth knowing. Basic auth over plain HTTP sends the password in clear text — on
@@ -413,9 +432,13 @@ Node.js, и откройте в браузере. Внизу панели все
 
 То же приложение умеет работать на сервере, в Docker. Там оно устроено нарочно иначе:
 древо живёт **в памяти контейнера** и до диска сервера не доходит. Вы привозите его
-zip-архивом кнопкой **«Загрузить архив»**, правите и увозите кнопкой **«Скачать архив»**.
-Перезапуск, перезагрузка и выкладка оставляют чистый лист — на чужой машине от вашей семьи
-не остаётся ничего.
+zip-архивом кнопкой **«Загрузить архив»**, правите, увозите кнопкой **«Скачать архив»** и
+стираете кнопкой **«Очистить»**. Перезапуск, перезагрузка и выкладка оставляют чистый лист —
+на чужой машине от вашей семьи не остаётся ничего. Свежий экземпляр поднимается по-настоящему
+пустым: образцовое древо вырезано из образа, и на странице нет ничьих имён.
+
+Древо у сервера одно, а не по штуке на посетителя: все, кто вошёл тем же паролем, видят одних
+и тех же людей, и **«Очистить»** опустошает древо сразу для всех.
 
 ```bash
 make check                                   # типы и тесты
@@ -432,13 +455,28 @@ GENEALOGY_USER=fam GENEALOGY_PASS='<пароль к древу>' make deploy
 
 Образ собирается здесь и уезжает тарболом; сервер только загружает его и поднимает
 контейнер — сам он ничего не собирает и инструментов не держит. `GENEALOGY_USER` и
-`GENEALOGY_PASS` закрывают сервис паролем (HTTP Basic), и без них compose просто не
-стартует: древо не окажется в открытом доступе по недосмотру.
+`GENEALOGY_PASS` закрывают сервис, и без них compose просто не стартует: древо не окажется
+в открытом доступе по недосмотру. Браузер попадает на страницу входа `/login` и получает
+печенье сессии — оно живёт до перезапуска сервера, а `/logout` его снимает. Инструменты
+ходят по-прежнему через HTTP Basic, так что `curl -u`, `make backup` и `make smoke`
+работают как работали.
 
 Раз древо в памяти, **выкладка его стирает**. Сначала заберите архив, потом верните:
 
 ```bash
 make backup                                  # кладёт backups/persons_<дата>.zip, хранит пять
+```
+
+Сервер пишет по строке на запрос в `logs/access.log` рядом с compose-файлом: время, адрес
+клиента, метод, путь, код ответа, предъявлялся ли пароль (`auth` или `-`, но никогда сам
+пароль), длительность и user-agent. На 10 МБ он сам себя
+прокручивает — файл уезжает в `access.log.1.gz`, прежние сдвигаются на номер дальше, а всё,
+что старше третьего, удаляется: переполнить диск журнал не может. Заголовки и тела в него
+не попадают, так что ни пароля, ни древа там нет.
+
+```bash
+make applog                                  # последние строки и что осталось от ротации
+make applog_grep PATTERN=192.0.2.7           # искать и в сжатой истории
 ```
 
 Две вещи, о которых стоит помнить. Пароль при HTTP Basic поверх обычного HTTP идёт

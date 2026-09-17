@@ -20,7 +20,7 @@
  * the server is open: on your own machine a password is pointless. On someone
  * else's it is mandatory — anyone who reaches the port can rewrite the tree.
  */
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
@@ -55,13 +55,42 @@ const USER = process.env.GENEALOGY_USER ?? "";
 const PASS = process.env.GENEALOGY_PASS ?? "";
 const GUARDED = !!(USER && PASS);
 
+// A second account that may also open /admin. Without it nobody can: the page
+// simply does not exist for anyone.
+const ADMIN_USER = process.env.GENEALOGY_ADMIN_USER ?? "";
+const ADMIN_PASS = process.env.GENEALOGY_ADMIN_PASS ?? "";
+const HAS_ADMIN = !!(ADMIN_USER && ADMIN_PASS);
+
 /** Comparison in constant time, over digests so the length does not leak. */
 const same = (a, b) =>
   timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
 
-/** Let through if no password is set or the header matches. */
-function allowed(req) {
-  if (!GUARDED) return true;
+/** Which account this pair belongs to, or null if neither. */
+function roleOfCreds(name, pass) {
+  const pair = String(name ?? "") + ":" + String(pass ?? "");
+  // both are checked every time, so a wrong login costs the same as a wrong password
+  const isAdmin = HAS_ADMIN && same(pair, ADMIN_USER + ":" + ADMIN_PASS);
+  const isUser = GUARDED && same(pair, USER + ":" + PASS);
+  return isAdmin ? "admin" : isUser ? "user" : null;
+}
+
+/**
+ * A ticket handed out by the login form, good until the server restarts — which
+ * is exactly as long as the tree in memory lives, so the two expire together.
+ */
+const SESSION = randomBytes(32).toString("hex");
+const COOKIE = "gen_session";
+
+const ticketOf = (req) => {
+  for (const part of String(req.headers.cookie ?? "").split(";")) {
+    const at = part.indexOf("=");
+    if (at > 0 && part.slice(0, at).trim() === COOKIE) return part.slice(at + 1).trim();
+  }
+  return "";
+};
+
+/** Does the Basic header carry the right pair. */
+function basicOk(req) {
   const head = req.headers.authorization ?? "";
   if (!head.startsWith("Basic ")) return false;
   try {
@@ -70,6 +99,42 @@ function allowed(req) {
     return false;
   }
 }
+
+/**
+ * Let through if no password is set, or the ticket is ours, or the Basic header
+ * matches. Basic stays for curl, the backup and the smoke check; browsers get the
+ * ticket from the form — Chrome does not reliably show its own password box for a
+ * bare address over plain HTTP, and a page we draw ourselves always works.
+ */
+function allowed(req) {
+  if (!GUARDED) return true;
+  const ticket = ticketOf(req);
+  if (ticket.length === SESSION.length && same(ticket, SESSION)) return true;
+  return basicOk(req);
+}
+
+/** The login page. `bad` marks a second attempt after a wrong password. */
+const loginPage = (bad) =>
+  '<!doctype html><html lang="en"><meta charset="utf-8">' +
+  '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+  "<title>Genealogy</title><style>" +
+  "body{font:15px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+  "background:#1b232e;color:#e6ebf1;display:flex;min-height:100vh;margin:0;align-items:center;justify-content:center}" +
+  "form{background:#232d3a;border:1px solid #33404f;border-radius:8px;padding:26px 28px;width:280px}" +
+  "h1{font:400 19px Georgia,serif;margin:0 0 4px}p{color:#93a2b3;font-size:12.5px;margin:0 0 16px}" +
+  "label{display:block;font-size:12px;color:#93a2b3;margin:10px 0 4px}" +
+  "input{width:100%;box-sizing:border-box;background:#1b232e;color:#e6ebf1;border:1px solid #33404f;" +
+  "border-radius:5px;padding:8px 9px;font-size:14px}" +
+  "button{width:100%;margin-top:16px;background:#c08a2e;border:0;border-radius:5px;color:#1b1200;" +
+  "font-weight:600;font-size:14px;padding:10px;cursor:pointer}" +
+  ".bad{color:#e9a79f;font-size:12.5px;margin-top:12px}" +
+  "</style><form method=post action=/login>" +
+  "<h1>Genealogy</h1><p>The tree is behind a password.</p>" +
+  "<label for=u>Login</label><input id=u name=u autocomplete=username autofocus>" +
+  "<label for=p>Password</label><input id=p name=p type=password autocomplete=current-password>" +
+  "<button type=submit>Enter</button>" +
+  (bad ? '<p class="bad">Wrong login or password.</p>' : "") +
+  "</form></html>";
 
 /* ----------------------------------- log ---------------------------------- */
 
@@ -133,6 +198,10 @@ function logRequest(req, res, started) {
   // behind a proxy the real address comes in a header; without one it is the socket
   const fwd = String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
   const ip = (fwd || req.socket?.remoteAddress || "-").replace(/^::ffff:/, "");
+  // How the caller identified itself — never with what. `-` against a 401 is a
+  // login page that was never filled in, `auth` against one is a wrong password,
+  // and from the status code alone the two look identical.
+  const creds = req.headers.authorization ? "auth" : ticketOf(req) ? "cookie" : "-";
   const line =
     [
       new Date().toISOString(),
@@ -140,6 +209,7 @@ function logRequest(req, res, started) {
       clean(req.method, 8),
       clean(String(req.url ?? "").split("?")[0], 200), // path only
       res.statusCode,
+      creds,
       Date.now() - started + "ms",
       '"' + clean(req.headers["user-agent"], 120) + '"',
     ].join(" ") + "\n";
@@ -553,6 +623,16 @@ const json = (res, code, body) => {
   res.end(JSON.stringify(body));
 };
 
+const page = (res, code, body) => {
+  res.writeHead(code, { "content-type": MIME[".html"], "cache-control": "no-store" });
+  res.end(body);
+};
+
+const redirect = (res, to) => {
+  res.writeHead(303, { location: to, "cache-control": "no-store" });
+  res.end();
+};
+
 let queue = Promise.resolve(); // writes go in turn so they do not step on each other
 
 const server = createServer(async (req, res) => {
@@ -565,7 +645,36 @@ const server = createServer(async (req, res) => {
     // count of them here — docker needs it to tell whether the container came up.
     if (req.url === "/api/health") return json(res, 200, { ok: true });
 
+    const html = String(req.headers.accept ?? "").includes("text/html");
+
+    // The login form and the ticket it hands out. Open by definition: this is
+    // where one goes to stop being a stranger.
+    if (req.url === "/login" && req.method === "GET") {
+      if (!GUARDED || allowed(req)) return redirect(res, "/");
+      return page(res, 200, loginPage(false));
+    }
+    if (req.url === "/login" && req.method === "POST") {
+      const form = new URLSearchParams(await readBody(req));
+      if (!GUARDED || same((form.get("u") ?? "") + ":" + (form.get("p") ?? ""), USER + ":" + PASS)) {
+        res.writeHead(303, {
+          location: "/",
+          // no Secure flag: over plain http the browser would drop the cookie
+          "set-cookie": COOKIE + "=" + SESSION + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800",
+        });
+        return res.end();
+      }
+      await new Promise((r) => setTimeout(r, 400)); // guessing should be slow
+      return page(res, 401, loginPage(true));
+    }
+    if (req.url === "/logout") {
+      res.writeHead(303, { location: "/login", "set-cookie": COOKIE + "=; Path=/; HttpOnly; Max-Age=0" });
+      return res.end();
+    }
+
     if (!allowed(req)) {
+      // A browser is sent to the form; everything else keeps the plain 401 that
+      // curl, the backup and the smoke check expect.
+      if (html) return redirect(res, "/login");
       res.writeHead(401, {
         "www-authenticate": 'Basic realm="Genealogy", charset="UTF-8"',
         "content-type": "text/plain; charset=utf-8",
@@ -671,9 +780,8 @@ server.listen(PORT, HOST, () => {
   console.log("Genealogy: http://" + HOST + ":" + PORT);
   console.log(store.kind === "memory" ? "People in memory: a restart loses them" : "People on disk: " + PERSONS);
   if (LOG_DIR) {
-    console.log(
-      "Requests: " + LOG_FILE + " (rotated at " + Math.round(LOG_MAX / 1e6) + " MB, " + LOG_KEEP + " kept gzipped)",
-    );
+    const size = LOG_MAX >= 1e6 ? LOG_MAX / 1e6 + " MB" : Math.round(LOG_MAX / 1e3) + " KB";
+    console.log("Requests: " + LOG_FILE + " (rotated at " + size + ", " + LOG_KEEP + " kept gzipped)");
   }
   if (!GUARDED && HOST !== "127.0.0.1") {
     console.warn("WARNING: the port is open to the outside with no password. Set GENEALOGY_USER and GENEALOGY_PASS.");

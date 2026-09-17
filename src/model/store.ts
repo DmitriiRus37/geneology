@@ -254,6 +254,10 @@ export function reducer(s: AppState, a: Action): AppState {
         d.people = fresh.people;
         d.links = fresh.links;
         d.pairs = fresh.pairs;
+        // these two used to survive a wipe and kept pointing at people who were
+        // already gone: the dashed kinships and whoever had been hidden away
+        d.sibs = fresh.sibs;
+        d.hidden = fresh.hidden;
         return { ok: true, select: null };
       });
 

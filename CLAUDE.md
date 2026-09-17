@@ -13,9 +13,12 @@ Node. `README.md` describes the product and the code map (ENG first, then RUS).
 folder. **memory** (`--store memory`, what the container runs) keeps everything in RAM:
 the tree arrives as a zip on `POST /api/upload`, leaves on `GET /api/download`, and a
 restart wipes it. Zip reading and writing are hand-rolled on `node:zlib` — the server
-still has no dependencies. `GENEALOGY_USER`/`GENEALOGY_PASS` turn on HTTP Basic auth;
+still has no dependencies. `GENEALOGY_USER`/`GENEALOGY_PASS` turn on the guard: browsers log in at `/login` and carry
+a session cookie that dies with the process, tools keep using HTTP Basic;
 `--host`/`HOST` sets the bind address, still `127.0.0.1` by default. `/api/health` is the
-only route outside the guard. Deployment lives in `Dockerfile`, `docker-compose-prod.yml`,
+only route outside the guard. `LOG_DIR` turns on the request log (one line per request,
+no headers and no bodies); it rotates itself at `LOG_MAX` (10 MB) keeping `LOG_KEEP` (3)
+gzipped files. Without `LOG_DIR` nothing is written, so local runs stay quiet. Deployment lives in `Dockerfile`, `docker-compose-prod.yml`,
 `Makefile` and the `deploy` / `backup-tree` skills in `.claude/skills/`.
 
 ## Commands
@@ -38,6 +41,8 @@ make build_docker                           # image for linux/amd64
 make run_local                              # run that image here (needs GENEALOGY_USER/PASS)
 make smoke BASE=<url>                        # check a running instance
 make backup                                 # pull the remote tree into backups/
+make applog N=50                            # tail the remote request log
+make applog_grep PATTERN=<text>             # search it, gzipped history included
 PROD_HOST=<ip> SSHPASS=<pw> GENEALOGY_USER=<u> GENEALOGY_PASS=<p> make deploy
 ```
 

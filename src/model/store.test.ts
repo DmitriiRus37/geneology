@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { render } from "../i18n.ts";
 import { layout } from "../layout/layout.ts";
 import { initialAppState, reducer, type Action, type AppState } from "./store.ts";
-import { addPair, addPerson, childrenOf, link, parentsOf, partnersOf } from "./tree.ts";
+import { addPair, addPerson, addSibling, childrenOf, link, parentsOf, partnersOf } from "./tree.ts";
 import { emptyState } from "./types.ts";
 
 function start(): { s: AppState; ivan: string; anna: string } {
@@ -119,6 +119,24 @@ test("clearing removes everyone, but it can be undone", () => {
   const a = run(s, { type: "wipe" });
   assert.deepEqual(a.tree.people, {});
   assert.equal(Object.keys(run(a, { type: "undo" }).tree.people).length, 2);
+});
+
+test("clearing leaves nothing pointing at people who are gone", () => {
+  const t = emptyState();
+  const mother = addPerson(t, { name: "Мать" });
+  const one = addPerson(t, { name: "Первая" });
+  const two = addPerson(t, { name: "Вторая" });
+  link(t, mother, one);
+  addSibling(t, one, two); // a dashed kinship, with no shared parents
+  const s = reducer(initialAppState(t), { type: "hideAbove", id: one });
+  assert.ok(s.tree.sibs.length && s.tree.hidden.length, "there is something to lose");
+
+  const cleared = reducer(s, { type: "wipe" });
+  assert.deepEqual(cleared.tree.people, {});
+  assert.deepEqual(cleared.tree.links, [], "no links left");
+  assert.deepEqual(cleared.tree.pairs, [], "no couples left");
+  assert.deepEqual(cleared.tree.sibs, [], "no dashed kinships left");
+  assert.deepEqual(cleared.tree.hidden, [], "nobody left hidden");
 });
 
 test("\"Hide ancestors\" cuts the tree upwards, \"Show everyone\" brings it back", () => {

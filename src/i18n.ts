@@ -28,6 +28,7 @@ const RU: Record<string, string> = {
   "notice.zipLoaded": "Из архива загружено людей: {n}",
   "notice.zipFailed": "Архив не загрузился: {detail}",
   "confirm.delete": "Удалить «{name}» и все его связи?",
+  "confirm.clear": "Убрать всех из древа — людей: {n}? Это увидят все, кто войдёт тем же паролем. Скачайте архив, если ещё не скачали.",
 
   "rail.intro": "Добавьте человека, выберите его на древе — и растите ветку стрелками.",
   "rail.add": "+ Добавить человека",
@@ -44,6 +45,7 @@ const RU: Record<string, string> = {
   "rail.openFile": "Открыть файл",
   "rail.uploadZip": "Загрузить архив",
   "rail.downloadZip": "Скачать архив",
+  "rail.clear": "Очистить",
   "rail.svg": "Картинка SVG",
   "rail.png": "Картинка PNG",
   "rail.pdf": "PDF",
@@ -212,6 +214,7 @@ const EN: Record<string, string> = {
   "notice.zipLoaded": "Loaded {n} people from the archive",
   "notice.zipFailed": "The archive did not load: {detail}",
   "confirm.delete": "Delete “{name}” and all their links?",
+  "confirm.clear": "Remove everyone from the tree — {n} people? Everyone who logs in with the same password will see this. Download the archive first if you have not.",
 
   "rail.intro": "Add a person, select them on the tree, and grow the branch with the arrows.",
   "rail.add": "+ Add person",
@@ -228,6 +231,7 @@ const EN: Record<string, string> = {
   "rail.openFile": "Open file",
   "rail.uploadZip": "Upload archive",
   "rail.downloadZip": "Download archive",
+  "rail.clear": "Clear",
   "rail.svg": "SVG image",
   "rail.png": "PNG image",
   "rail.pdf": "PDF",

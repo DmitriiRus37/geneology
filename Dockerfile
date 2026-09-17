@@ -15,6 +15,10 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json vite.config.ts index.html ./
 COPY src ./src
+# The sample tree is a convenience for a first local run and has real names in it.
+# The image must not carry anybody's names at all: an instance on someone else's
+# machine holds only what was uploaded to it, so we empty the seed before building.
+RUN echo '{}' > src/data/family.json
 RUN npm run build
 
 # ---- run ----
@@ -22,12 +26,18 @@ FROM node:26-alpine
 ENV NODE_ENV=production \
     GENEALOGY_STORE=memory \
     HOST=0.0.0.0 \
-    PORT=5179
+    PORT=5179 \
+    LOG_DIR=/app/logs
 WORKDIR /app
 COPY server.mjs ./
 COPY --from=build /app/dist ./dist
 
-# it writes to memory, not to disk — it does not need the container file system
+# The only thing written to disk: one line per request, rotated at 10 MB with
+# three gzipped files kept. Bind-mount it from the host to keep it across
+# restarts. The tree itself still never touches the disk.
+RUN mkdir -p /app/logs && chown node:node /app/logs
+VOLUME /app/logs
+
 USER node
 EXPOSE 5179
 

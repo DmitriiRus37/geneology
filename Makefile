@@ -25,12 +25,18 @@ LOCAL_TARBALL := /tmp/$(TARBALL)
 PORT          ?= 5179
 BACKUP_DIR    ?= backups
 
-SSH_OPTS := -o StrictHostKeyChecking=no -o UserKnownHostsFile=/tmp/genealogy_known_hosts
-# with a password when SSHPASS is set, otherwise the usual key
-SSH := $(if $(SSHPASS),sshpass -e ssh,ssh) $(SSH_OPTS) $(SSH_USER)@$(PROD_HOST)
-SCP := $(if $(SSHPASS),sshpass -e scp,scp) $(SSH_OPTS)
+# ControlPath=none keeps a stale multiplexing master from the user's ~/.ssh/config
+# out of the way; it used to make a deploy fail with a broken pipe.
+SSH_OPTS := -o StrictHostKeyChecking=no -o UserKnownHostsFile=/tmp/genealogy_known_hosts \
+            -o ControlPath=none -o ControlMaster=no
+# With a password, keys must be switched off outright: ssh offers every key it has
+# first, the server counts each one as a failed attempt and refuses the password
+# before it is ever asked. Without SSHPASS we go the usual key way.
+PW_OPTS  := $(if $(SSHPASS),-o PubkeyAuthentication=no -o PreferredAuthentications=password -o NumberOfPasswordPrompts=1,)
+SSH := $(if $(SSHPASS),sshpass -e ssh,ssh) $(SSH_OPTS) $(PW_OPTS) $(SSH_USER)@$(PROD_HOST)
+SCP := $(if $(SSHPASS),sshpass -e scp,scp) $(SSH_OPTS) $(PW_OPTS)
 
-.PHONY: build_docker check run_local stop_local smoke save deploy logs ps backup clean need_host need_pass
+.PHONY: build_docker check run_local stop_local smoke save deploy logs applog applog_grep ps backup clean need_host need_pass
 
 ## check: typecheck and the whole test suite.
 check:
@@ -74,7 +80,9 @@ need_pass:
 ##         The tree lives in the container's memory, so a deploy wipes it:
 ##         take the archive first, put it back afterwards.
 deploy: need_host need_pass save
-	$(SSH) "mkdir -p $(REMOTE_DIR)"
+	$(SSH) "mkdir -p $(REMOTE_DIR)/logs"
+	# the container runs as uid 1000, so the bind-mounted log dir must be its own
+	$(SSH) "chown -R 1000:1000 $(REMOTE_DIR)/logs"
 	# the password goes as a file with mode 600, not on a command line where it
 	# would show up in the process list and in the shell history
 	@umask 077 && printf 'GENEALOGY_USER=%s\nGENEALOGY_PASS=%s\nGENEALOGY_PORT=%s\n' \
@@ -95,6 +103,18 @@ deploy: need_host need_pass save
 ## logs: the last lines from the container on the server.
 logs: need_host
 	$(SSH) "docker logs --tail=$(or $(N),200) genealogy_app"
+
+## applog: the last lines of the request log, and what the rotation has kept.
+applog: need_host
+	$(SSH) "ls -lh $(REMOTE_DIR)/logs/"
+	$(SSH) "tail -n $(or $(N),50) $(REMOTE_DIR)/logs/access.log"
+
+## applog_grep: search the whole request log, gzipped history included.
+##              PATTERN=<what to look for>
+applog_grep: need_host
+	@test -n "$(PATTERN)" || { echo "Set PATTERN=<text to look for>"; exit 1; }
+	$(SSH) "grep -h -- '$(PATTERN)' $(REMOTE_DIR)/logs/access.log 2>/dev/null; \
+	        zgrep -h -- '$(PATTERN)' $(REMOTE_DIR)/logs/access.log.*.gz 2>/dev/null; true"
 
 ## ps: what is running there and how much it eats.
 ps: need_host
