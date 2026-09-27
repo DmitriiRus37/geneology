@@ -7,3 +7,8 @@
 .env
 /backups/
 /logs/
+
+# the real tree must never reach git: archives and backup folders of it, and macOS litter
+/persons*.zip
+/persons_backup*/
+.DS_Store

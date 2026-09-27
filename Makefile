@@ -38,9 +38,11 @@ SCP := $(if $(SSHPASS),sshpass -e scp,scp) $(SSH_OPTS) $(PW_OPTS)
 
 .PHONY: build_docker check run_local stop_local smoke save deploy logs applog applog_grep ps backup clean need_host need_pass
 
-## check: typecheck and the whole test suite.
+## check: typecheck, build and the whole test suite. The build comes before the tests:
+##        one of them fetches the built page from a test server.
 check:
 	npm run typecheck
+	npm run build
 	npm test
 
 ## build_docker: build the image locally, cross-built for the server arch.
@@ -81,7 +83,8 @@ need_pass:
 ## deploy: ship the image to the server and (re)start the container.
 ##         The tree lives in the container's memory, so a deploy wipes it:
 ##         take the archive first, put it back afterwards.
-deploy: need_host need_pass save
+##         Nothing ships while `make check` is red.
+deploy: need_host need_pass check save
 	$(SSH) "mkdir -p $(REMOTE_DIR)/logs"
 	# the container runs as uid 1000, so the bind-mounted log dir must be its own
 	$(SSH) "chown -R 1000:1000 $(REMOTE_DIR)/logs"

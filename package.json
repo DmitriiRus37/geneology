@@ -10,7 +10,8 @@
     "serve": "node server.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"src/**/*.test.ts\""
+    "test": "node --test \"src/**/*.test.ts\" \"server/**/*.test.ts\"",
+    "test:update": "node --test --test-update-snapshots \"src/**/*.test.ts\" \"server/**/*.test.ts\""
   },
   "dependencies": {
     "react": "^19.3.0",

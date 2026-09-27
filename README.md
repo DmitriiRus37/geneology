@@ -157,7 +157,7 @@ The administrator lands on `/admin` straight after signing in and can still open
 Without those two variables the page exists for nobody.
 
 ```bash
-make check                                   # typecheck and tests
+make check                                   # typecheck, build and tests; make deploy will not ship while it is red
 GENEALOGY_USER=fam GENEALOGY_PASS='secret' make run_local   # try the image here first
 make smoke                                   # check the running instance
 ```
@@ -209,7 +209,9 @@ npm run dev         # terminal 2: Vite with hot reload on 5178, /api is proxied 
 ```
 
 ```bash
-npm test                        # unit tests (Node 24+): dates, names, layout, row order, bus stacking, tree actions, dictionary
+npm test                        # all tests (Node 24+): dates, names, layout, row order, bus stacking, tree actions, dictionary,
+                                #   the server's HTTP API, layout snapshots, random trees, interface markup
+npm run test:update             # after a deliberate change: rewrite the snapshots, then read their diff
 npm run typecheck
 node tools/metrics.ts           # layout quality metrics on persons/
 node tools/metrics.ts /path/to/copy   # the same on a copy of the data
@@ -487,7 +489,7 @@ JSON: что бы ни набрали в поле логина, подделат
 этих двух переменных страницы нет ни для кого.
 
 ```bash
-make check                                   # типы и тесты
+make check                                   # типы, сборка и тесты; make deploy не выкатит, пока они красные
 GENEALOGY_USER=fam GENEALOGY_PASS='secret' make run_local   # сперва посмотреть у себя
 make smoke                                   # проверить поднятый экземпляр
 ```
@@ -538,7 +540,9 @@ npm run dev         # в другом: vite с горячей перезагру
 ```
 
 ```bash
-npm test                        # тесты (Node 24+): даты, имена, раскладка, порядок в рядах, укладка шин, действия над древом, словарь
+npm test                        # все тесты (Node 24+): даты, имена, раскладка, порядок в рядах, укладка шин, действия над древом, словарь,
+                                #   HTTP-API сервера, снимки раскладки, случайные деревья, разметка интерфейса
+npm run test:update             # после намеренного изменения: переписать снимки и прочитать их дифф
 npm run typecheck
 node tools/metrics.ts           # метрики качества раскладки на persons/
 node tools/metrics.ts /путь/к/копии   # то же на копии данных

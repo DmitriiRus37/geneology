@@ -36,14 +36,15 @@ npm start            # build + serve at http://127.0.0.1:5179
 npm run serve        # serve the existing build
 npm run dev          # Vite with hot reload on 5178, /api proxied to 5179 (run `serve` too)
 npm run build        # dist/genealogy.html, a single self-contained page
-npm test             # node --test "src/**/*.test.ts" (keep the quotes)
+npm test             # node --test "src/**/*.test.ts" "server/**/*.test.ts" (keep the quotes)
+npm run test:update  # the same, rewriting the snapshots: only after a deliberate change
 npm run typecheck    # tsc --noEmit
 node tools/metrics.ts /path/to/data-copy   # layout quality metrics; `seed` = src/data/family.json
 node tools/smoke.mjs <base-url> [user] [pass]   # smoke-check a running instance
 ```
 
 ```bash
-make check                                  # typecheck + tests
+make check                                  # typecheck + build + tests; make deploy depends on it
 make build_docker                           # image for linux/amd64
 make run_local                              # run that image here (needs GENEALOGY_USER/PASS)
 make smoke BASE=<url>                        # check a running instance
@@ -113,7 +114,15 @@ Before and after any layout change run `npm test` and `node tools/metrics.ts` on
 snapshot. Nearly every improvement of one metric costs another; do not claim an
 improvement without the numbers, and quote them to the user. Random-tree fuzzing (build
 trees with `addPerson`/`link`/`addPair`, check overlaps and NaN in both modes) has caught
-bugs that the real data did not.
+bugs that the real data did not; it lives in `src/layout/fuzz.test.ts`, on the trees of
+`src/testing/trees.ts`.
+
+`src/layout/snapshot.test.ts` records where every card and line lands. A refactor must
+leave those snapshots untouched; a deliberate layout change rewrites them with
+`npm run test:update`, and the diff goes to the user with the metrics.
+
+Tests named "known issue …" pin a known bug exactly as it behaves today, so that a
+rewrite cannot change it unnoticed. Fixing the bug means turning its test around.
 
 ## Documentation rules
 
