@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from "react";
 import family from "./data/family.json";
 import { loadLang, msg, saveLang, t, type Lang } from "./i18n.ts";
 import { flushDisk, probeDisk, reloadDisk, saveDisk, type Store } from "./io/disk.ts";
@@ -24,6 +24,9 @@ export function App() {
   const [pick, setPick] = useState<{ mode: Relation; from: string } | null>(null);
   const [where, setWhere] = useState<Where>(null);
   const board = useRef<BoardHandle>(null);
+  /** On a phone the panel is a sheet lying over the canvas; this is how much of the
+      bottom of the canvas it covers. Zero on a wide screen, where they stand side by side. */
+  const [sheet, setSheet] = useState(0);
 
   // the interface language is remembered in the browser: it is a setting of the screen, not of the data
   const [lang, setLangState] = useState<Lang>(loadLang);
@@ -167,13 +170,14 @@ export function App() {
 
   return (
     <AppCtx value={ctx}>
-      <div id="app">
+      <div id="app" style={{ "--sheet": sheet + "px" } as CSSProperties}>
         <Sidebar
           filter={filter}
           setFilter={setFilter}
           bbox={bbox}
           where={where}
           onReread={reread}
+          onSheet={setSheet}
           onAdd={() => board.current?.openAdd(undefined, s.selected ?? undefined)}
           onAddRelation={(mode) => s.selected && board.current?.openAdd(mode, s.selected)}
           onPick={(mode) => s.selected && setPick({ mode, from: s.selected })}
@@ -184,6 +188,7 @@ export function App() {
           layout={lay}
           filter={filter}
           pick={pick}
+          sheet={sheet}
           onPickDone={(id) => {
             if (pick && id) d({ type: "connect", mode: pick.mode, from: pick.from, to: id });
             setPick(null);

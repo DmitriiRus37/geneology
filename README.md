@@ -248,6 +248,7 @@ src/
     couple.ts   side-by-side couple geometry shared by the lines and the row-order scoring
   ui/         React components, rendering and input only
     bits.tsx    shared bits: date field, button row, person line, "close on click outside"
+    sheet.ts    the side panel as a sheet on a phone: three heights, drag and flick
   io/         disk.ts talks to the server; JSON save/open, SVG, PNG and PDF export
   data/       family.json, a small sample tree used to seed an empty persons/
 tools/metrics.ts  layout quality metrics
@@ -319,6 +320,13 @@ it replaces one coordinate.
 - **Two fingers on the trackpad pan the canvas**, pinch zooms. The mouse wheel pans too
   (Shift for sideways); zoom with ⌘ or Ctrl, the `+`/`−` buttons, or a pinch on a touch
   screen.
+- **On a phone the tree takes the whole screen** and the side panel becomes a sheet at
+  the bottom. At rest it shows only the search and the add button; its grab bar is
+  dragged or flicked up to half the screen or nearly all of it, and a tap on the bar opens
+  and closes it. Tapping a person on the tree brings the sheet up with their fields and
+  keeps them in sight above it; tapping the empty canvas sends it back down. A finger pans
+  the tree even when it starts on a card — to move a card, rest the finger on it for a
+  moment first. The canvas controls fold into one row at the top, the rest behind "more".
 - Spacing slider, card dragging, search with highlighting, undo (⌘Z), JSON save and open.
 - **Export as an image**: SVG, PNG and PDF. The PDF holds the whole tree on one page of its
   own size, losslessly compressed, without libraries.
@@ -568,6 +576,7 @@ src/
     couple.ts   геометрия пары бок о бок — общая у линий и у оценки порядка рядов
   ui/         React-компоненты, только отрисовка и ввод
     bits.tsx    общие мелочи: поле даты, ряд кнопок, строка человека, «закрыть по щелчку мимо»
+    sheet.ts    боковая панель как шторка на телефоне: три высоты, перетаскивание и смахивание
   io/         disk.ts — обмен с сервером; сохранение JSON, выгрузка SVG, PNG и PDF
   data/       family.json — небольшое образцовое древо, им заполняется пустая persons/
 tools/metrics.ts  метрики качества раскладки
@@ -639,6 +648,13 @@ Makefile          сборка, выкладка, логи, резервная �
 - **Двумя пальцами по трекпаду — двигаем полотно**, щипком — масштаб. Колесо мыши тоже
   двигает полотно (Shift — вбок), масштаб на нём — с ⌘ или Ctrl, кнопками `+`/`−` и
   щипком на сенсорном экране.
+- **На телефоне древо занимает весь экран**, а боковая панель становится шторкой снизу.
+  В покое в ней только поиск и кнопка «Добавить»; за полоску её тянут или смахивают вверх
+  до половины экрана или почти во весь экран, а касание полоски открывает и закрывает её.
+  Касание человека на древе поднимает шторку с его полями и держит его на виду над ней;
+  касание пустого холста опускает её обратно. Палец двигает древо, даже если лёг на
+  карточку, — чтобы передвинуть карточку, на ней сначала надо задержать палец. Кнопки над
+  холстом сворачиваются в один ряд сверху, остальное — за «Ещё».
 - Ползунок **просвет**, перетаскивание карточек, поиск с подсветкой, отмена (⌘Z),
   сохранение и открытие JSON.
 - **Выгрузка картинкой**: SVG, PNG и PDF. В PDF попадает всё древо целиком, одной

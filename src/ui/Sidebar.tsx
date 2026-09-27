@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { exportPdfFile } from "../io/exportPdf.ts";
 import { exportPngFile, exportSvgFile } from "../io/exportSvg.ts";
 import { downloadZip, uploadZip } from "../io/disk.ts";
@@ -10,9 +10,10 @@ import { matches } from "../model/names.ts";
 import type { Relation } from "../model/store.ts";
 import { msg } from "../i18n.ts";
 import { normalize } from "../model/tree.ts";
-import { PersonLine, Seg } from "./bits.tsx";
+import { PersonLine, Seg, useNarrow } from "./bits.tsx";
 import { useApp } from "./ctx.ts";
 import { Editor } from "./Editor.tsx";
+import { useSheet } from "./sheet.ts";
 
 interface Props {
   filter: string;
@@ -24,76 +25,184 @@ interface Props {
   bbox: BBox | null;
   where: Where;
   onReread: () => void;
+  /** how much of the canvas the sheet covers on a phone, so the tree can keep clear of it */
+  onSheet: (px: number) => void;
 }
 
-export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoTo, bbox, where, onReread }: Props) {
+export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoTo, bbox, where, onReread, onSheet }: Props) {
   const { s, d, t, lang, setLang } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const zipRef = useRef<HTMLInputElement>(null);
-  const [min, setMin] = useState(false);
 
-  const ids = Object.keys(s.tree.people);
+  // On a wide screen the panel is the column it always was; on a phone it is a sheet.
+  const narrow = useNarrow();
+  const sheet = useSheet(narrow, onSheet);
+  const findRef = useRef<HTMLInputElement>(null);
+  const refocus = useRef(false);
+
+  /** Was the person picked from the list right here, rather than on the tree? */
+  const fromList = useRef(false);
+
+  // A selection on a phone is a request to see that person. Tapped on the tree: the
+  // sheet comes up far enough to show their fields, from the top. Picked from the list
+  // with the sheet all the way up: it steps down so the tree shows where they are, and
+  // the list stays where it was — they are reading down it. And when nobody is selected
+  // any more, a sheet that came up by itself goes back down.
+  useEffect(() => {
+    const wasList = fromList.current;
+    fromList.current = false;
+    if (!narrow) return;
+    if (s.selected) {
+      if (sheet.snap === "peek") sheet.go("half");
+      else if (wasList && sheet.snap === "full") sheet.go("half", false);
+      if (!wasList) sheet.rail.current?.scrollTo({ top: 0 });
+    } else if (sheet.byApp() && sheet.snap === "half") {
+      sheet.go("peek");
+    }
+  }, [narrow, s.selected]);
+
+  const people = s.tree.people;
+  const ids = useMemo(() => Object.keys(people), [people]);
   const list = useMemo(
-    () =>
-      ids
-        .filter((id) => matches(s.tree.people[id], filter))
-        .sort((a, b) => s.tree.people[a].name.localeCompare(s.tree.people[b].name, "ru")),
-    [ids, s.tree.people, filter],
+    () => ids.filter((id) => matches(people[id], filter)).sort((a, b) => people[a].name.localeCompare(people[b].name, "ru")),
+    [ids, people, filter],
   );
 
-  const selected = s.selected && s.tree.people[s.selected] ? s.tree.people[s.selected] : null;
+  const selected = s.selected && people[s.selected] ? people[s.selected] : null;
   const hiddenSet = useMemo(() => new Set(s.tree.hidden), [s.tree.hidden]);
 
+  // Built only when what it shows changes: dragging the sheet re-renders the panel on
+  // every frame, and a long list would make the drag stutter.
+  const rows = useMemo(
+    () =>
+      list.map((id) => {
+        const p = people[id];
+        const tag = yearTag(p);
+        return (
+          <li
+            key={id}
+            className={(s.selected === id ? "sel" : "") + (hiddenSet.has(id) ? " hid" : "")}
+            title={hiddenSet.has(id) ? t("rail.hiddenTitle") : undefined}
+            onClick={() => {
+              fromList.current = true;
+              d({ type: "select", id });
+              onGoTo(id);
+            }}
+          >
+            <PersonLine p={p} tag={hiddenSet.has(id) ? t("rail.hidden") : tag} />
+          </li>
+        );
+      }),
+    [list, people, s.selected, hiddenSet, t, d, onGoTo],
+  );
+
+  const search = (
+    <input
+      id="search"
+      type="text"
+      placeholder={t("rail.search")}
+      autoComplete="off"
+      value={filter}
+      onChange={(e) => setFilter(e.target.value)}
+    />
+  );
+
   return (
-    <aside id="rail" className={min ? "min" : ""}>
-      <div className="rail-head">
+    <aside
+      id="rail"
+      ref={sheet.rail}
+      className={[sheet.dragging ? "dragging" : "", sheet.shut ? "shut" : ""].filter(Boolean).join(" ")}
+      style={narrow && sheet.height ? { height: sheet.height } : undefined}
+      // A phone keyboard covers the lower half of the screen and the sheet does not know
+      // it is there, so a field low down would be typed into blind. The sheet goes up to
+      // its full height, where the field is above the keyboard — and the search has room
+      // to show what it finds.
+      onFocusCapture={(e) => {
+        const el = e.target;
+        if (narrow && el instanceof HTMLInputElement && el.type === "text") sheet.go("full", false);
+      }}
+    >
+      <div className="ruler" ref={sheet.ruler} aria-hidden />
+      <div className="rail-head" ref={sheet.head}>
+        <div
+          className="grab"
+          role="button"
+          tabIndex={0}
+          aria-expanded={!sheet.shut}
+          aria-label={sheet.shut ? t("rail.expand") : t("rail.collapse")}
+          title={sheet.shut ? t("rail.expand") : t("rail.collapse")}
+          {...sheet.bar}
+        >
+          <span />
+        </div>
         <h1>{t("app.title")}</h1>
         <p>{t("rail.intro")}</p>
-        <button className="primary add-big" onClick={onAdd}>
-          {t("rail.add")}
-        </button>
-        <button id="railToggle" className="quiet" onClick={() => setMin((v) => !v)}>
-          {min ? t("rail.expand") : t("rail.collapse")}
+        {/* on a phone the head holds what is worth a single tap: finding and adding */}
+        {narrow && (
+          <div className="find">
+            <input
+              id="search"
+              ref={findRef}
+              type="text"
+              enterKeyHint="search"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder={t("rail.search")}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              // the keyboard's "search" key has nothing to submit: it puts the keyboard away
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+            />
+            {filter && (
+              <button
+                className="clear"
+                aria-label={t("rail.clearSearch")}
+                title={t("rail.clearSearch")}
+                // keep the keyboard up if it was up: the next name is typed straight away
+                onPointerDown={(e) => {
+                  refocus.current = document.activeElement === findRef.current;
+                  e.preventDefault();
+                }}
+                onClick={() => {
+                  setFilter("");
+                  if (refocus.current) findRef.current?.focus();
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        )}
+        <button className="primary add-big" onClick={onAdd} aria-label={narrow ? t("rail.add") : undefined}>
+          {narrow ? t("rail.addShort") : t("rail.add")}
         </button>
       </div>
 
       <div className="rail-scroll">
         {selected ? (
-          <Editor key={selected.id} p={selected} onAddRelation={onAddRelation} onPick={onPick} onGoTo={onGoTo} />
+          <Editor
+            key={selected.id}
+            p={selected}
+            onAddRelation={onAddRelation}
+            // the next tap has to land on someone on the tree, so the sheet gets out of the way
+            onPick={(mode) => {
+              if (narrow) sheet.go("peek", false);
+              onPick(mode);
+            }}
+            onGoTo={onGoTo}
+          />
         ) : (
-          <div className="block">
+          <div className="block hint">
             <p className="block-title">{t("rail.hint")}</p>
           </div>
         )}
 
         <div className="block">
-          <input
-            id="search"
-            type="text"
-            placeholder={t("rail.search")}
-            autoComplete="off"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-          <ul id="people">
-            {list.map((id) => {
-              const p = s.tree.people[id];
-              const tag = yearTag(p);
-              return (
-                <li
-                  key={id}
-                  className={(s.selected === id ? "sel" : "") + (hiddenSet.has(id) ? " hid" : "")}
-                  title={hiddenSet.has(id) ? t("rail.hiddenTitle") : undefined}
-                  onClick={() => {
-                    d({ type: "select", id });
-                    onGoTo(id);
-                  }}
-                >
-                  <PersonLine p={p} tag={hiddenSet.has(id) ? t("rail.hidden") : tag} />
-                </li>
-              );
-            })}
-          </ul>
+          {!narrow && search}
+          <ul id="people">{rows}</ul>
           {!list.length && <p className="empty-note">{ids.length ? t("rail.nobodyFound") : t("rail.nobodyYet")}</p>}
         </div>
       </div>

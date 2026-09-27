@@ -12,13 +12,20 @@ interface NodeProps {
   dim: boolean;
   guess: boolean;
   src: boolean;
+  /** picked up by a finger that rested on it, and about to be carried */
+  lift: boolean;
 }
 
-const Node = memo(function Node({ p, b, selected, dim, guess, src }: NodeProps) {
+const Node = memo(function Node({ p, b, selected, dim, guess, src, lift }: NodeProps) {
   const x = b.x - b.w / 2;
   let ty = b.y + 15 + CHIP_BAND; // below the band with the chip
   const cls =
-    "node" + (selected ? " sel" : "") + (dim ? " dim" : "") + (guess ? " est" : "") + (src ? " src" : "");
+    "node" +
+    (selected ? " sel" : "") +
+    (dim ? " dim" : "") +
+    (guess ? " est" : "") +
+    (src ? " src" : "") +
+    (lift ? " lift" : "");
   return (
     <g className={cls} data-id={p.id}>
       <rect className="box" x={x} y={b.y} width={b.w} height={b.h} rx={6} />
@@ -45,9 +52,10 @@ interface NodesProps {
   filter: string;
   tl: Timeline | null;
   pickFrom: string | null;
+  lifted?: string | null;
 }
 
-export const Nodes = memo(function Nodes({ people, pos, selected, filter, tl, pickFrom }: NodesProps) {
+export const Nodes = memo(function Nodes({ people, pos, selected, filter, tl, pickFrom, lifted = null }: NodesProps) {
   return (
     <g id="nodes">
       {Object.keys(people).map((id) => {
@@ -63,6 +71,7 @@ export const Nodes = memo(function Nodes({ people, pos, selected, filter, tl, pi
             dim={!!filter && !matches(p, filter)}
             guess={!!tl && !!tl.est[id]}
             src={pickFrom === id}
+            lift={lifted === id}
           />
         );
       })}

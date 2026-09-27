@@ -2,7 +2,7 @@ import { useState } from "react";
 import { yearTag } from "../model/dates.ts";
 import { kinOf, type KinRow } from "../model/kin.ts";
 import { colorOf } from "../model/names.ts";
-import { DateField, Seg } from "./bits.tsx";
+import { DateField, Seg, useNameField } from "./bits.tsx";
 import type { Relation } from "../model/store.ts";
 import { childrenOf, parentsOf, partnersOf } from "../model/tree.ts";
 import type { Person, Sex } from "../model/types.ts";
@@ -36,6 +36,7 @@ export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
   const [alt, setAlt] = useState((p.alt || []).join(", "));
 
   const set = (patch: Partial<Person>) => d({ type: "update", id: p.id, patch, quiet: true });
+  const nameField = useNameField();
 
   const parents = parentsOf(s.tree, p.id);
   const kids = childrenOf(s.tree, p.id);
@@ -64,6 +65,7 @@ export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
         type="text"
         value={name}
         placeholder={t("pop.namePh")}
+        {...nameField}
         onChange={(e) => {
           setName(e.target.value);
           set({ name: e.target.value });
@@ -73,6 +75,7 @@ export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
         type="text"
         value={maiden}
         placeholder={t("ed.maidenPh")}
+        {...nameField}
         onChange={(e) => {
           setMaiden(e.target.value);
           set({ maiden: e.target.value.trim() });
@@ -100,6 +103,7 @@ export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
         type="text"
         value={alt}
         placeholder={t("ed.altPh")}
+        {...nameField}
         onChange={(e) => {
           setAlt(e.target.value);
           set({ alt: splitList(e.target.value) });

@@ -32,10 +32,12 @@ const RU: Record<string, string> = {
 
   "rail.intro": "Добавьте человека, выберите его на древе — и растите ветку стрелками.",
   "rail.add": "+ Добавить человека",
+  "rail.addShort": "+ Добавить",
   "rail.expand": "Развернуть",
   "rail.collapse": "Свернуть",
   "rail.hint": "Щёлкните по человеку на древе или в списке — откроются поля и стрелки «родитель», «ребёнок», «супруг».",
   "rail.search": "Найти человека",
+  "rail.clearSearch": "Очистить поиск",
   "rail.hiddenTitle": "Скрыт: срезан вверх. Вернуть — кнопкой «Вернуть всех» на холсте",
   "rail.hidden": "скрыт",
   "rail.nobodyFound": "Никого не нашлось.",
@@ -72,6 +74,7 @@ const RU: Record<string, string> = {
   "tool.rearrangeTitle": "Забыть, куда вы перетаскивали карточки, и разложить древо заново",
   "tool.zoomOut": "Отдалить",
   "tool.zoomIn": "Приблизить",
+  "tool.more": "Ещё",
 
   "pick.child": "Выберите ребёнка для",
   "pick.parent": "Выберите родителя для",
@@ -220,10 +223,12 @@ const EN: Record<string, string> = {
 
   "rail.intro": "Add a person, select them on the tree, and grow the branch with the arrows.",
   "rail.add": "+ Add person",
+  "rail.addShort": "+ Add",
   "rail.expand": "Expand",
   "rail.collapse": "Collapse",
   "rail.hint": "Click a person on the tree or in the list to open their fields and the “parent”, “child” and “spouse” arrows.",
   "rail.search": "Find a person",
+  "rail.clearSearch": "Clear search",
   "rail.hiddenTitle": "Hidden: the tree was cut above them. Use “Show everyone” on the canvas to bring them back",
   "rail.hidden": "hidden",
   "rail.nobodyFound": "Nobody found.",
@@ -260,6 +265,7 @@ const EN: Record<string, string> = {
   "tool.rearrangeTitle": "Forget where you dragged cards and lay the tree out again",
   "tool.zoomOut": "Zoom out",
   "tool.zoomIn": "Zoom in",
+  "tool.more": "More",
 
   "pick.child": "Pick the child of",
   "pick.parent": "Pick a parent of",
