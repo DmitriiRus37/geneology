@@ -12,5 +12,7 @@ dist/
 README.md
 CLAUDE.md
 tools/
+server/*.test.ts
+server/testing.ts
 .env
 logs/

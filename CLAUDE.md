@@ -5,12 +5,15 @@ Guidance for Claude Code sessions in this repository.
 ## What this is
 
 A local family-tree editor: React 19 + TypeScript + Vite front end, a dependency-free Node
-server (`server.mjs`) that stores one JSON file per person in `persons/`. All domain and
+server (`server.mjs`, which only imports `server/main.ts`) that stores one JSON file per person in `persons/`. All domain and
 layout logic is plain TypeScript with no DOM access, so it runs and is tested directly in
 Node. `README.md` describes the product and the code map (ENG first, then RUS).
 
-`server.mjs` has two stores behind one tree parser, `src/model/cards.ts` (imported by the
-server as it is, so it imports nothing and the image copies it). **disk** (default) is the `persons/`
+The server is TypeScript in `server/` that Node runs directly (type stripping, no build;
+`erasableSyntaxOnly` forbids `enum`, decorators and parameter properties), one file per job,
+wired together in `main.ts`; no module does anything on import or keeps global state. It has
+two stores behind one tree parser, `src/model/cards.ts` (imported by the server as it is, so
+it imports nothing and the image copies it with `server/*.ts`, tests excluded). **disk** (default) is the `persons/`
 folder. **memory** (`--store memory`, what the container runs) keeps everything in RAM:
 the tree arrives as a zip on `POST /api/upload`, leaves on `GET /api/download`, and a
 restart wipes it. Zip reading and writing are hand-rolled on `node:zlib` — the server
@@ -39,7 +42,7 @@ npm run dev          # Vite with hot reload on 5178, /api proxied to 5179 (run `
 npm run build        # dist/genealogy.html, a single self-contained page
 npm test             # node --test "src/**/*.test.ts" "server/**/*.test.ts" (keep the quotes)
 npm run test:update  # the same, rewriting the snapshots: only after a deliberate change
-npm run typecheck    # tsc --noEmit
+npm run typecheck    # tsc for the app, then for server/ (its own tsconfig, no DOM types)
 node tools/metrics.ts /path/to/data-copy   # layout quality metrics; `seed` = src/data/family.json
 node tools/smoke.mjs <base-url> [user] [pass]   # smoke-check a running instance
 ```
@@ -56,7 +59,7 @@ PROD_HOST=<ip> SSHPASS=<pw> GENEALOGY_USER=<u> GENEALOGY_PASS=<p> make deploy
 ```
 
 Rebuild `dist/` after changing anything under `src/`: `npm start` serves `dist/`, not the
-sources. Changes to `server.mjs` need a server restart.
+sources. Changes to `server/` need a server restart.
 
 ## Data safety (non-negotiable)
 
@@ -86,7 +89,7 @@ sources. Changes to `server.mjs` need a server restart.
   (`Msg`), never rendered strings. Both dictionaries must have the same keys; a test checks it.
   The server is the exception: it returns plain English error strings, and the UI shows them
   verbatim as the detail of a message.
-- No runtime dependencies beyond React in the app and none at all in `server.mjs`.
+- No runtime dependencies beyond React in the app and none at all in the server.
 - `model/` and `layout/` must stay free of DOM access; they are imported by Node tests and
   by `tools/metrics.ts`.
 - Names are entered first-name-first ("Имя Отчество Фамилия"); `names.ts` assumes the

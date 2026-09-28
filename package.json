@@ -9,7 +9,7 @@
     "start": "npm run build && node server.mjs",
     "serve": "node server.mjs",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p server",
     "test": "node --test \"src/**/*.test.ts\" \"server/**/*.test.ts\"",
     "test:update": "node --test --test-update-snapshots \"src/**/*.test.ts\" \"server/**/*.test.ts\""
   },

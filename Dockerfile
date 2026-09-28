@@ -1,10 +1,10 @@
 # The genealogy image for a remote machine.
 #
 # The build runs on the native architecture ($BUILDPLATFORM) and produces one
-# html file; only that, server.mjs and the card format it imports
-# (src/model/cards.ts, run by Node as it is) reach the final layer. The server
-# has not a single dependency, so there is no node_modules in the image either —
-# hence its size.
+# html file; only that and the server reach the final layer: server.mjs,
+# server/*.ts and the card format they import (src/model/cards.ts), all run by
+# Node as they are. The server has not a single dependency, so there is no
+# node_modules in the image either — hence its size.
 #
 # Inside the container the server runs in memory mode: the tree is brought in
 # and taken out as a zip archive, and nothing is left on the machine's disk.
@@ -31,6 +31,8 @@ ENV NODE_ENV=production \
     LOG_DIR=/app/logs
 WORKDIR /app
 COPY server.mjs ./
+# the tests and their harness stay out: .dockerignore drops them from the context
+COPY server/*.ts ./server/
 COPY src/model/cards.ts ./src/model/
 COPY --from=build /app/dist ./dist
 

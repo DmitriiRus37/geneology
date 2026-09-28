@@ -226,7 +226,15 @@ another.
 ### Project structure
 
 ```
-server.mjs    local server: serves the app, reads and writes persons/. No dependencies
+server.mjs    starts the local server: serves the app, reads and writes persons/. No dependencies
+server/       the server itself, TypeScript that Node runs as it is
+  main.ts       settings in, parts built, port opened
+  routes.ts     every route in the order it is tried
+  tree.ts       the tree over a store, the write queue and the version check
+  stores.ts     disk and memory stores behind one interface
+  auth.ts       passwords, the login ticket, who is asking
+  attempts.ts   the sign-in log; pages.ts, geo.ts: the admin page and where addresses are
+  accesslog.ts  the request log and its rotation; zip.ts, http.ts, config.ts
 persons/      your data, one file per person
 src/
   util.ts     small shared helpers: lists by key, mean, extent, merging into components
@@ -557,7 +565,15 @@ node tools/metrics.ts /путь/к/копии   # то же на копии да
 ### Как устроено
 
 ```
-server.mjs    локальный сервер: отдаёт приложение, читает и пишет persons/. Без зависимостей
+server.mjs    запускает локальный сервер: отдаёт приложение, читает и пишет persons/. Без зависимостей
+server/       сам сервер, TypeScript, который Node запускает как есть
+  main.ts       настройки, сборка частей, открытие порта
+  routes.ts     все маршруты в том порядке, в каком они проверяются
+  tree.ts       дерево поверх хранилища, очередь записи и проверка версии
+  stores.ts     хранилища на диске и в памяти за одним интерфейсом
+  auth.ts       пароли, билет входа, кто спрашивает
+  attempts.ts   журнал входов; pages.ts, geo.ts: страница администратора и где находятся адреса
+  accesslog.ts  журнал запросов и его ротация; zip.ts, http.ts, config.ts
 persons/      ваши данные, по файлу на человека
 src/
   util.ts     мелочи на весь проект: списки по ключу, среднее, размах, слияние в куски
