@@ -1,7 +1,7 @@
 /**
  * Genealogy server: serves the built app and keeps people — one file per person.
  *
- * Two stores, sharing the same tree parsing:
+ * Two stores, sharing the same tree parsing (src/model/cards.ts):
  *
  *   disk   — the persons/ folder, a file per person. This is how it all works locally.
  *   memory — nothing is written to disk at all. The tree arrives as a zip through
@@ -32,6 +32,7 @@ import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync, gzipSync, inflateRawSync } from "node:zlib";
+import { cardsToTree, okId, treeToCards, VIEW } from "./src/model/cards.ts";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 
@@ -44,7 +45,6 @@ const arg = (name) => {
 const dirArg = arg("--dir");
 const PERSONS = dirArg ? resolve(dirArg) : join(ROOT, "persons");
 const DIST = join(ROOT, "dist");
-const VIEW = "_view.json"; // canvas settings; does not look like a person, hence the underscore
 
 const PORT = Number(arg("--port") ?? process.env.PORT ?? 5179);
 // by default we listen to ourselves only: the server writes to the file system
@@ -59,9 +59,6 @@ const LOG_KEEP = Number(process.env.LOG_KEEP ?? 3);
 const LOG_FILE = LOG_DIR ? join(LOG_DIR, "access.log") : "";
 const LOGINS_FILE = LOG_DIR ? join(LOG_DIR, "logins.jsonl") : "";
 if (LOG_DIR) mkdirSync(LOG_DIR, { recursive: true });
-
-/** An id ends up in a file name, so only harmless ones get through. */
-const okId = (v) => typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v);
 
 /* -------------------------------- password ------------------------------- */
 
@@ -735,124 +732,25 @@ const memStore = {
 
 const store = MODE === "memory" ? memStore : diskStore;
 
-/** A mutual link is written in both cards — it reaches the tree once. */
-function collect(others, id, kind, seen, out) {
-  for (const b of others) {
-    if (!okId(b)) continue;
-    const key = kind + "|" + [id, b].sort().join("|");
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ a: id, b });
-  }
-}
-
-/* ---------------------------- reading the store --------------------------- */
+/* ------------------------ the tree over the store ----------------------- */
 
 async function readTree() {
   const names = await store.names();
-  if (!names) return null; // empty — the app will seed it itself
-  const people = {};
-  const links = [];
-  const pairs = [];
-  const sibs = [];
-  const seen = new Set();
-  let view = {};
-
-  for (const name of [...names].sort()) {
-    let raw;
-    try {
-      raw = JSON.parse(await store.read(name));
-    } catch (e) {
-      console.warn("skipping " + name + ": " + e.message);
-      continue;
-    }
-    if (name === VIEW) {
-      view = raw || {};
-      continue;
-    }
-    if (name.startsWith("_")) continue;
-    const id = okId(raw?.id) ? raw.id : name.slice(0, -5);
-    if (!okId(id)) continue;
-    const { parents = [], spouses = [], siblings = [], ...person } = raw || {};
-    people[id] = { ...person, id };
-    for (const p of parents) if (okId(p)) links.push({ parent: p, child: id });
-    // a marriage and an explicit kinship are written in both cards — take each pair once
-    collect(spouses, id, "sp", seen, pairs);
-    collect(siblings, id, "sib", seen, sibs);
-  }
-
-  // links to people who disappeared are dropped silently
-  const alive = (id) => Object.hasOwn(people, id);
-  return {
-    people,
-    links: links.filter((l) => alive(l.parent) && alive(l.child)),
-    pairs: pairs.filter((p) => alive(p.a) && alive(p.b)),
-    sibs: sibs.filter((p) => alive(p.a) && alive(p.b)),
-    timeline: !!view.timeline,
-    gap: typeof view.gap === "number" ? view.gap : 1,
-    hidden: Array.isArray(view.hidden) ? view.hidden.filter((id) => okId(id) && alive(id)) : [],
-    seq: Object.values(people).reduce((m, p) => Math.max(m, p.n || 0), 0),
-  };
+  if (!names) return cardsToTree(null, console.warn);
+  const files = [];
+  for (const name of [...names].sort()) files.push([name, await store.read(name)]);
+  return cardsToTree(files, console.warn);
 }
 
-/* ---------------------------- writing the store --------------------------- */
-
 async function writeTree(tree) {
-  const people = tree?.people && typeof tree.people === "object" ? tree.people : {};
-  const ids = Object.keys(people).filter(okId);
-
-  const blank = () => Object.fromEntries(ids.map((id) => [id, []]));
-  const parents = blank();
-  const spouses = blank();
-  const siblings = blank();
-
-  /** A mutual link is written into both cards — otherwise half of it is lost. */
-  const both = (list, into) => {
-    for (const p of list || []) {
-      if (!people[p.a] || !people[p.b] || !into[p.a] || !into[p.b]) continue;
-      if (!into[p.a].includes(p.b)) into[p.a].push(p.b);
-      if (!into[p.b].includes(p.a)) into[p.b].push(p.a);
-    }
-  };
-
-  for (const l of tree.links || []) {
-    if (parents[l.child] && people[l.parent] && !parents[l.child].includes(l.parent)) {
-      parents[l.child].push(l.parent);
-    }
-  }
-  both(tree.pairs, spouses);
-  both(tree.sibs, siblings);
-
+  const { ids, cards, view } = treeToCards(tree);
   let written = 0;
-  for (const id of ids) {
-    const p = people[id];
-    const doc = {
-      id,
-      name: String(p.name ?? ""),
-      maiden: p.maiden || "",
-      alt: Array.isArray(p.alt) ? p.alt : [],
-      born: p.born || "",
-      died: p.died || "",
-      sex: p.sex || "u",
-      n: p.n || 0,
-      parents: parents[id],
-      spouses: spouses[id],
-      siblings: siblings[id],
-    };
-    if (typeof p.fx === "number" && typeof p.fy === "number") {
-      doc.fx = Math.round(p.fx * 100) / 100;
-      doc.fy = Math.round(p.fy * 100) / 100;
-    }
-    if (await store.write(id + ".json", JSON.stringify(doc, null, 2) + "\n")) written++;
-  }
-
-  const hidden = Array.isArray(tree.hidden) ? tree.hidden.filter((id) => okId(id) && people[id]) : [];
-  const viewText = JSON.stringify({ timeline: !!tree.timeline, gap: tree.gap ?? 1, hidden }, null, 2) + "\n";
-  await store.write(VIEW, viewText);
+  for (const [name, text] of cards) if (await store.write(name, text)) written++;
+  await store.write(VIEW, view);
 
   // deleted people leave together with their files
   let removed = 0;
-  const keep = new Set(ids.map((id) => id + ".json"));
+  const keep = new Set(cards.map(([name]) => name));
   for (const name of (await store.names()) ?? []) {
     if (name.startsWith("_") || keep.has(name)) continue;
     await store.remove(name);

@@ -233,6 +233,7 @@ src/
   i18n.ts     RU/EN dictionary, t(lang, key, vars); the model returns message keys
   model/      data logic, no DOM
     types.ts    Person, Link, Pair, TreeState
+    cards.ts    the file format: cards <-> tree, shared with the server
     dates.ts    date parsing: 01.12.1995, 12.1995, "autumn 1938", "1880s", "197?"
     names.ts    name forms, search, sex detection
     tree.ts     links, cycle checks, normalisation of files, hiding ancestors, siblings
@@ -563,6 +564,7 @@ src/
   i18n.ts     словарь RU/EN, t(lang, key, vars); модель отдаёт ключи сообщений
   model/      данные, без единого обращения к DOM
     types.ts    Person, Link, Pair, TreeState
+    cards.ts    формат файлов: карточки <-> дерево, общий с сервером
     dates.ts    разбор дат: 01.12.1995, 12.1995, «осень 1938», «1880-е гг.», «197?»
     names.ts    формы имени, поиск, определение пола
     tree.ts     связи, проверка петель, приведение файла к валидному виду, скрытие предков, сиблинги

@@ -9,7 +9,8 @@ server (`server.mjs`) that stores one JSON file per person in `persons/`. All do
 layout logic is plain TypeScript with no DOM access, so it runs and is tested directly in
 Node. `README.md` describes the product and the code map (ENG first, then RUS).
 
-`server.mjs` has two stores behind one tree parser. **disk** (default) is the `persons/`
+`server.mjs` has two stores behind one tree parser, `src/model/cards.ts` (imported by the
+server as it is, so it imports nothing and the image copies it). **disk** (default) is the `persons/`
 folder. **memory** (`--store memory`, what the container runs) keeps everything in RAM:
 the tree arrives as a zip on `POST /api/upload`, leaves on `GET /api/download`, and a
 restart wipes it. Zip reading and writing are hand-rolled on `node:zlib` — the server
