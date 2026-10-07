@@ -3,9 +3,7 @@ import { useEffect, useState, type KeyboardEvent, type RefObject } from "react";
 import { normalizeDateInput, yearTag } from "../model/dates.ts";
 import { colorOf } from "../model/names.ts";
 import type { Person } from "../model/types.ts";
-
-/** When the phone layout takes over. Character for character the query in the stylesheet. */
-const NARROW = "(max-width: 860px), (max-height: 500px) and (max-width: 1000px)";
+import { NARROW } from "./screen.ts";
 
 /**
  * Is the screen a phone? The stylesheet does most of the phone work on its own, but

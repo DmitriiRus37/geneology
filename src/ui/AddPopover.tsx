@@ -8,9 +8,9 @@ import { DateField, PersonLine, Seg, useDismiss, useNameField } from "./bits.tsx
 import { useApp } from "./ctx.ts";
 
 export interface PopSpot {
-  /** coordinates inside the canvas */
-  x: number;
-  y: number;
+  /** coordinates inside the canvas; none on a phone, where the stylesheet places the window */
+  x?: number;
+  y?: number;
   mode: Relation | null;
   anchor: string | null;
 }

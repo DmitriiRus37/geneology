@@ -263,6 +263,11 @@ src/
   ui/         React components, rendering and input only
     bits.tsx    shared bits: date field, button row, person line, "close on click outside"
     sheet.ts    the side panel as a sheet on a phone: three heights, drag and flick
+    screen.ts   the phone media query and the bar's height, which the stylesheet repeats (a test holds them together)
+    Board.tsx   the canvas: puts the pieces of board/ together and draws
+    board/      view.ts: the scale and offset and the arithmetic of moving them; gestures.ts: what a finger
+                or a mouse means, as a plain automaton; useView.ts, useGestures.ts: both wired to React;
+                Popovers.tsx: the add window and the menu of a line
     cards.ts    what the layout needs from the screen: a canvas to measure text, card words in the language
     useSync.ts  the sync engine wired into React; keys.ts: what a key press means
   io/         talking to the server and to files
@@ -613,6 +618,11 @@ src/
   ui/         React-компоненты, только отрисовка и ввод
     bits.tsx    общие мелочи: поле даты, ряд кнопок, строка человека, «закрыть по щелчку мимо»
     sheet.ts    боковая панель как шторка на телефоне: три высоты, перетаскивание и смахивание
+    screen.ts   медиазапрос телефона и высота панели, которые повторяет таблица стилей (тест держит их вместе)
+    Board.tsx   холст: собирает части из board/ и рисует
+    board/      view.ts: масштаб и сдвиг и арифметика их изменения; gestures.ts: что значит палец или мышь,
+                простым автоматом; useView.ts, useGestures.ts: оба подключены к React;
+                Popovers.tsx: окно добавления и меню линии
     cards.ts    что раскладке нужно от экрана: канвас для замера текста, слова карточки на нужном языке
     useSync.ts  движок синхронизации, подключённый к React; keys.ts: что значит нажатая клавиша
   io/         обмен с сервером и с файлами

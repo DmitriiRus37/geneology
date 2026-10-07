@@ -1103,15 +1103,14 @@ svg#tree.picking {
   /* Both popovers are placed by hand beside whatever was clicked; a phone has no
      room for that — the add window was cut off by the canvas it was drawn inside.
      They become a card at the top of the screen, where the keyboard cannot reach
-     them. The coordinates arrive as inline styles, so nothing short of !important
-     moves them. */
+     them. On a phone they get no coordinates at all: this is all that places them. */
   .pop {
-    position: fixed !important;
-    left: max(8px, env(safe-area-inset-left)) !important;
-    right: max(8px, env(safe-area-inset-right)) !important;
-    top: max(10px, env(safe-area-inset-top)) !important;
-    bottom: auto !important;
-    width: auto !important;
+    position: fixed;
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    top: max(10px, env(safe-area-inset-top));
+    bottom: auto;
+    width: auto;
     max-height: 72dvh;
     overflow-y: auto;
     overscroll-behavior: contain;

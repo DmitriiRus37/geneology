@@ -7,6 +7,7 @@ import {
   type PointerEvent,
   type RefObject,
 } from "react";
+import { BAR } from "./screen.ts";
 
 /**
  * The side panel as a sheet, on a phone.
@@ -88,7 +89,7 @@ export function useSheet(narrow: boolean, onCover: (px: number) => void): Sheet 
     }
     const peek = (head.current?.offsetHeight ?? 64) + chrome;
     const screen = r?.parentElement?.clientHeight || window.innerHeight;
-    const full = Math.max(peek + 160, screen - (ruler.current?.offsetHeight ?? 76));
+    const full = Math.max(peek + 160, screen - (ruler.current?.offsetHeight ?? BAR));
     const half = Math.min(full - 40, Math.max(peek + 120, Math.round(screen * 0.56)));
     peekRef.current = peek;
     return { peek, half, full };
