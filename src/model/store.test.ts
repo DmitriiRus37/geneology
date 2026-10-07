@@ -5,6 +5,7 @@ import { layout } from "../layout/layout.ts";
 import { initialAppState, reducer, type Action, type AppState } from "./store.ts";
 import { addPair, addPerson, addSibling, childrenOf, link, normalize, parentsOf, partnersOf } from "./tree.ts";
 import { emptyState, type TreeState } from "./types.ts";
+import { nodeCards } from "../testing/cards.ts";
 
 function start(): { s: AppState; ivan: string; anna: string } {
   const tree = emptyState();
@@ -167,7 +168,7 @@ test("\"Hide ancestors\" cuts the tree upwards, \"Show everyone\" brings it back
   assert.deepEqual([...hidden].sort(), [grandad, grandma, father, uncle, mother].sort(), "the ancestors, their children and their spouses");
   assert.ok(!hidden.has(me) && !hidden.has(wife) && !hidden.has(son), "the person themselves, the wife and the son stay");
   assert.ok(!hidden.has(wifesMother), "the wife's kin are not my ancestors");
-  const { pos } = layout(after.tree);
+  const { pos } = layout(after.tree, nodeCards());
   assert.ok(!pos[grandad] && pos[me] && pos[wife] && pos[wifesMother], "the layout knows nothing of the hidden");
 
   const back = reducer(after, { type: "unhideAll" });
@@ -195,7 +196,7 @@ test("a sibling: with parents known they become their child, without them a dash
   assert.equal(s2.tree.sibs.length, 1, "no parents, so the kinship itself is recorded");
   const brother = s2.selected as string;
   assert.ok(s2.tree.sibs.some((x) => (x.a === loner && x.b === brother) || (x.b === loner && x.a === brother)));
-  const { level, pos } = layout(s2.tree);
+  const { level, pos } = layout(s2.tree, nodeCards());
   assert.equal(level[loner], level[brother], "in the same row");
   assert.ok(Math.abs(pos[loner].x - pos[brother].x) < 260, "and side by side");
 
@@ -351,7 +352,7 @@ test("known issue DOM-4: ids named after Object.prototype members bring the layo
     people: { constructor: person("constructor", "Иван Петрович Орлов", "m"), toString: person("toString", "Пётр Иванович Орлов", "m") },
     links: [{ parent: "constructor", child: "toString" }],
   });
-  assert.throws(() => layout(tree));
+  assert.throws(() => layout(tree, nodeCards()));
 });
 
 test("known issue DOM-8: normalize throws on containers of the wrong type", () => {

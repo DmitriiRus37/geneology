@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSS
 import family from "./data/family.json";
 import { loadLang, msg, saveLang, t, type Lang } from "./i18n.ts";
 import { flushDisk, probeDisk, reloadDisk, saveDisk, type Store } from "./io/disk.ts";
+import { loadStored, store } from "./io/local.ts";
 import { bboxOf, layout } from "./layout/layout.ts";
-import { initialAppState, loadStored, reducer, store, type Relation } from "./model/store.ts";
+import { initialAppState, reducer, type Relation } from "./model/store.ts";
 import { normalize } from "./model/tree.ts";
 import type { TreeState } from "./model/types.ts";
 import { Board, type BoardHandle } from "./ui/Board.tsx";
+import { cardsFor } from "./ui/cards.ts";
 import { AppCtx } from "./ui/ctx.ts";
 import { Sidebar } from "./ui/Sidebar.tsx";
 
@@ -40,7 +42,7 @@ export function App() {
   }, [lang]);
   const tt = useCallback((key: string, vars?: Record<string, string | number>) => t(lang, key, vars), [lang]);
 
-  const lay = useMemo(() => layout(s.tree, lang), [s.tree, lang]);
+  const lay = useMemo(() => layout(s.tree, cardsFor(lang)), [s.tree, lang]);
   const bbox = useMemo(() => bboxOf(lay.pos), [lay.pos]);
 
   const treeRef = useRef(s.tree);

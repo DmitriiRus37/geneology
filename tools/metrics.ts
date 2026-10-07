@@ -19,6 +19,7 @@ import type { Pt, Rect } from "../src/layout/route.ts";
 import type { Card } from "../src/model/cards.ts";
 import { normalize } from "../src/model/tree.ts";
 import { pairKey, type Pair, type TreeState } from "../src/model/types.ts";
+import { nodeCards } from "../src/testing/cards.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -73,7 +74,7 @@ function main(): void {
   for (const byYears of [false, true]) {
     const s = source();
     s.timeline = byYears;
-    const { pos, level } = layout(s);
+    const { pos, level } = layout(s, nodeCards());
     const ids = Object.keys(pos);
     const rects = ids.map((id) => rectOf(pos[id]));
     const items = computeEdges(s, pos, level, null);

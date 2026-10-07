@@ -13,6 +13,7 @@ import { test } from "node:test";
 import type { Lang } from "../i18n.ts";
 import { normalize } from "../model/tree.ts";
 import type { TreeState } from "../model/types.ts";
+import { nodeCards } from "../testing/cards.ts";
 import { synthTree } from "../testing/trees.ts";
 import { computeEdges } from "./edges.ts";
 import { layout } from "./layout.ts";
@@ -22,7 +23,7 @@ const round = (v: number) => Math.round(v * 1000) / 1000;
 const roundPath = (d: string) => d.replace(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g, (m) => String(round(Number(m))));
 
 function picture(tree: TreeState, lang: Lang = "ru", selected: string | null = null) {
-  const lay = layout(tree, lang);
+  const lay = layout(tree, nodeCards(lang));
   const edges = computeEdges(tree, lay.pos, lay.level, selected);
   return {
     cards: Object.fromEntries(Object.entries(lay.pos).map(([id, b]) => [id, [round(b.x), round(b.y), round(b.w), round(b.h)]])),

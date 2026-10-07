@@ -1,10 +1,22 @@
-import type { Lang } from "../i18n.ts";
-import { fmtDates } from "../model/dates.ts";
+/**
+ * How big a card is and what lines it shows. The layout does not measure text and
+ * does not know the interface language: both come from outside as a `CardSizer`.
+ * The browser measures with a canvas; Node (tests, metrics) by the number of
+ * characters, `byChars`.
+ */
 import type { Person } from "../model/types.ts";
 
 export const NODE_W = 202;
-/** Полоска сверху карточки, где сидит жетон с полом: текст в неё не заезжает. */
+/** The strip along the top of a card where the sex badge sits: no text goes into it. */
 export const CHIP_BAND = 7;
+/** No card is lower than this, and no row either. */
+export const MIN_CARD_H = 46;
+/** Padding above and below the text, besides the badge strip. */
+const PAD_Y = 24;
+/** Room for text across a card. */
+const TEXT_W = NODE_W - 24;
+/** A long name wraps to at most this many lines. */
+const NAME_LINES = 3;
 
 export type LineClass = "name" | "maiden" | "yrs" | "alt";
 
@@ -24,23 +36,29 @@ const FONT_MAIDEN = "italic 11.5px Georgia, serif";
 const FONT_YRS = "11.5px sans-serif";
 const FONT_ALT = "10.5px sans-serif";
 
-/** В браузере меряем канвасом, в Node (тесты) — по числу символов. */
-const measure: (text: string, font: string) => number = (() => {
-  if (typeof document === "undefined") {
-    return (text: string, font: string) => {
-      const size = parseFloat(font.match(/(\d+(?:\.\d+)?)px/)?.[1] ?? "12");
-      return text.length * size * 0.55;
-    };
-  }
-  const ctx = document.createElement("canvas").getContext("2d");
-  if (!ctx) return (text: string) => text.length * 8;
-  return (text: string, font: string) => {
-    ctx.font = font;
-    return ctx.measureText(text).width;
-  };
-})();
+const LINE_H: Record<LineClass, number> = { name: 19, maiden: 16, yrs: 16, alt: 14 };
 
-export function wrap(text: string, font: string, max: number, maxLines: number): string[] {
+/** The width of `text` set in `font` (a CSS font shorthand), in pixels. */
+export type Measure = (text: string, font: string) => number;
+
+/** Without a canvas: the font size times a typical glyph width per character. */
+export const byChars: Measure = (text, font) => {
+  const size = parseFloat(font.match(/(\d+(?:\.\d+)?)px/)?.[1] ?? "12");
+  return text.length * size * 0.55;
+};
+
+/** The words of a card in the interface language. */
+export interface CardText {
+  /** the maiden-name line for a maiden name */
+  maiden(name: string): string;
+  /** the dates line; "" for none */
+  dates(p: Person): string;
+}
+
+/** A card's lines and height; the same person always gives the same answer. */
+export type CardSizer = (p: Person) => CardSize;
+
+export function wrap(measure: Measure, text: string, font: string, max: number, maxLines: number): string[] {
   if (measure(text, font) <= max) return [text];
   const words = text.split(" ");
   let lines: string[] = [];
@@ -62,35 +80,37 @@ export function wrap(text: string, font: string, max: number, maxLines: number):
   return lines;
 }
 
-export function clip(text: string, font: string, max: number): string {
+export function clip(measure: Measure, text: string, font: string, max: number): string {
   if (measure(text, font) <= max) return text;
   let t = text;
   while (t.length > 1 && measure(t + "…", font) > max) t = t.slice(0, -1);
   return t.replace(/[\s,;]+$/, "") + "…";
 }
 
-function build(p: Person, lang: Lang): CardSize {
-  const max = NODE_W - 24;
-  const lines: CardLine[] = [];
-  for (const t of wrap(p.name || "?", FONT_NAME, max, 3)) lines.push({ t, c: "name", h: 19 });
-  if (p.maiden) lines.push({ t: clip("ур. " + p.maiden, FONT_MAIDEN, max), c: "maiden", h: 16 });
-  const d = fmtDates(p, lang);
-  if (d) lines.push({ t: clip(d, FONT_YRS, max), c: "yrs", h: 16 });
-  if (p.alt && p.alt.length) lines.push({ t: clip(p.alt.join(", "), FONT_ALT, max), c: "alt", h: 14 });
-  let h = 24 + CHIP_BAND;
-  for (const l of lines) h += l.h;
-  return { lines, h: Math.max(h, 46) };
-}
+/** The sizer for a way of measuring and a language, with a cache of its own. */
+export function cardSizer(measure: Measure, text: CardText): CardSizer {
+  const build = (p: Person, maiden: string, dates: string): CardSize => {
+    const lines: CardLine[] = [];
+    for (const t of wrap(measure, p.name || "?", FONT_NAME, TEXT_W, NAME_LINES)) lines.push({ t, c: "name", h: LINE_H.name });
+    if (p.maiden) lines.push({ t: clip(measure, maiden, FONT_MAIDEN, TEXT_W), c: "maiden", h: LINE_H.maiden });
+    if (dates) lines.push({ t: clip(measure, dates, FONT_YRS, TEXT_W), c: "yrs", h: LINE_H.yrs });
+    if (p.alt && p.alt.length) lines.push({ t: clip(measure, p.alt.join(", "), FONT_ALT, TEXT_W), c: "alt", h: LINE_H.alt });
+    let h = PAD_Y + CHIP_BAND;
+    for (const l of lines) h += l.h;
+    return { lines, h: Math.max(h, MIN_CARD_H) };
+  };
 
-const cache = new Map<string, CardSize>();
-
-export function sizeOf(p: Person, lang: Lang = "ru"): CardSize {
-  const key = [lang, p.name, p.maiden, p.born, p.died, (p.alt || []).join("\u0001")].join("\u0000");
-  let v = cache.get(key);
-  if (!v) {
-    v = build(p, lang);
-    if (cache.size > 4000) cache.clear();
-    cache.set(key, v);
-  }
-  return v;
+  const cache = new Map<string, CardSize>();
+  return (p) => {
+    const maiden = p.maiden ? text.maiden(p.maiden) : "";
+    const dates = text.dates(p);
+    const key = [p.name, p.maiden, maiden, dates, (p.alt || []).join("\u0001")].join("\u0000");
+    let v = cache.get(key);
+    if (!v) {
+      v = build(p, maiden, dates);
+      if (cache.size > 4000) cache.clear();
+      cache.set(key, v);
+    }
+    return v;
+  };
 }

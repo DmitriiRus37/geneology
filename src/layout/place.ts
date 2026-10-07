@@ -26,7 +26,8 @@
  * that is impossible, the parents themselves step away.
  */
 import { extent, mean } from "../util.ts";
-import type { Gaps, Graph, Union, Unions } from "./layout.ts";
+import type { Graph, Union, Unions } from "./families.ts";
+import type { Gaps } from "./layout.ts";
 import { NODE_W } from "./measure.ts";
 
 export interface PlaceCtx {
@@ -104,15 +105,20 @@ const widthOf = (c: Cont): number => Math.max(...c.R) - Math.min(...c.L);
 /** The moves within which the parents' dispute with the in-laws must be settled. */
 const ROUNDS = 40;
 
-/**
- * Returns the x of the centre of every card in the component; the left edge is not
- * normalised. `rows[l]` is the order of row l, all rows of the tree (empty ones too).
- */
-export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, number> {
-  const { g, u, asChild, gaps } = ctx;
-  const nRows = rows.length;
+const cardOff = (b: Blk, id: string): number => -b.w / 2 + NODE_W / 2 + b.ids.indexOf(id) * (NODE_W + b.gap);
 
-  // blocks
+const setGap = (b: Blk, gap: number): void => {
+  b.gap = gap;
+  b.w = NODE_W * b.ids.length + gap * (b.ids.length - 1);
+};
+
+const cardX = (blockOf: Map<string, Blk>, id: string): number => {
+  const b = blockOf.get(id) as Blk;
+  return b.x + cardOff(b, id);
+};
+
+/** Splits every row into blocks: spouses and explicit siblings stand as one piece. */
+function buildBlocks(rows: string[][], u: Unions, gaps: Gaps): { blocks: Blk[]; blockOf: Map<string, Blk> } {
   const blocks: Blk[] = [];
   const blockOf = new Map<string, Blk>();
   rows.forEach((row, l) => {
@@ -139,18 +145,11 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
       a = i;
     }
   });
-  if (!blocks.length) return {};
-  const cardOff = (b: Blk, id: string): number => -b.w / 2 + NODE_W / 2 + b.ids.indexOf(id) * (NODE_W + b.gap);
-  const setGap = (b: Blk, gap: number): void => {
-    b.gap = gap;
-    b.w = NODE_W * b.ids.length + gap * (b.ids.length - 1);
-  };
-  const cardX = (id: string): number => {
-    const b = blockOf.get(id) as Blk;
-    return b.x + cardOff(b, id);
-  };
+  return { blocks, blockOf };
+}
 
-  // owners
+/** A block's owner: the block above holding the parents of whichever member came in as a child. */
+function assignOwners(blocks: Blk[], blockOf: Map<string, Blk>, g: Graph, asChild: Set<string>): void {
   const parentBlock = (id: string, l: number): Blk | null => {
     for (const p of g.parents[id]) {
       const pb = blockOf.get(p);
@@ -164,8 +163,10 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
     b.owner = parentBlock(pick, b.l);
     b.owner?.kids.push(b);
   }
+}
 
-  // trees
+/** The trees blocks make through their owners, and which of them is the main one (the largest). */
+function growTrees(blocks: Blk[]): { roots: Blk[]; size: number[]; main: number } {
   const roots = blocks.filter((b) => !b.owner);
   roots.forEach((r, t) => {
     const stack = [r];
@@ -179,10 +180,15 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
   for (const b of blocks) size[b.tree] += b.ids.length;
   let main = 0;
   for (let t = 1; t < roots.length; t++) if (size[t] > size[main]) main = t;
+  return { roots, size, main };
+}
 
-  // Anchors: a child of someone from tree t, standing in a block of another tree.
-  // A tree is hung from the first anchor inside an already hung tree; a ring of
-  // in-laws is broken by size — such a tree stands next to the main one on its own.
+/**
+ * Anchors: a child of someone from tree t, standing in a block of another tree.
+ * A tree is hung from the first anchor inside an already hung tree; a ring of
+ * in-laws is broken by size — such a tree stands next to the main one on its own.
+ */
+function hangInLaws(blocks: Blk[], blockOf: Map<string, Blk>, g: Graph, roots: Blk[], size: number[], main: number) {
   const cands: { C: Blk; P: Blk }[][] = roots.map(() => []);
   for (const P of blocks) {
     for (const id of P.ids) {
@@ -225,8 +231,25 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
   for (const b of blocks) b.kids.sort((p, q) => p.key - q.key || p.l - q.l);
   /** blocks on the way from the in-law root to the anchor (and the anchor itself): their cluster cannot be moved */
   const pinnedSet = new Set(pinnedKid.values());
+  return { hungAt, free, pinnedKid, pinnedSet };
+}
 
-  // packing
+interface Packing {
+  nRows: number;
+  gaps: Gaps;
+  u: Unions;
+  blockOf: Map<string, Blk>;
+  hungAt: Map<number, Blk>;
+  pinnedKid: Map<Blk, Blk>;
+  pinnedSet: Set<Blk>;
+}
+
+/**
+ * The packing: `lay` stands a block's cluster up — its children packed tight against
+ * the contour, the block over the middle of them, the disputes with the in-laws
+ * settled. `shift` and `contOf` are what the caller needs to put trees side by side.
+ */
+function packer({ nRows, gaps, u, blockOf, hungAt, pinnedKid, pinnedSet }: Packing) {
   /**
    * In-laws that the parents pushed away from their child: the block's centre is
    * no further left (dir 1) or no further right (dir −1) than a point given
@@ -309,7 +332,7 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
           for (const un of u.byParent[id] ?? []) {
             if (seen.has(un)) continue;
             seen.add(un);
-            const xs = un.children.filter((c) => order.includes(blockOf.get(c) as Blk)).map(cardX);
+            const xs = un.children.filter((c) => order.includes(blockOf.get(c) as Blk)).map((c) => cardX(blockOf, c));
             if (!xs.length) continue;
             const inB = un.parents.filter((p) => B.ids.includes(p));
             const [lo, hi] = extent(xs, (v) => v);
@@ -452,6 +475,21 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
       B.sub = R.sub;
     }
   };
+  return { lay, shift, contOf };
+}
+
+/**
+ * Returns the x of the centre of every card in the component; the left edge is not
+ * normalised. `rows[l]` is the order of row l, all rows of the tree (empty ones too).
+ */
+export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, number> {
+  const { g, u, asChild, gaps } = ctx;
+  const { blocks, blockOf } = buildBlocks(rows, u, gaps);
+  if (!blocks.length) return {};
+  assignOwners(blocks, blockOf, g, asChild);
+  const { roots, size, main } = growTrees(blocks);
+  const { hungAt, free, pinnedKid, pinnedSet } = hangInLaws(blocks, blockOf, g, roots, size, main);
+  const { lay, shift, contOf } = packer({ nRows: rows.length, gaps, u, blockOf, hungAt, pinnedKid, pinnedSet });
 
   const root = roots[main];
   lay(root);
@@ -465,6 +503,6 @@ export function placeComponent(rows: string[][], ctx: PlaceCtx): Record<string, 
   }
 
   const out: Record<string, number> = {};
-  for (const b of blocks) for (const id of b.ids) out[id] = cardX(id);
+  for (const b of blocks) for (const id of b.ids) out[id] = cardX(blockOf, id);
   return out;
 }

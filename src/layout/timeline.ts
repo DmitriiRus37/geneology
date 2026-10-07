@@ -1,7 +1,8 @@
 import { isApproxYear, yearIn, yearOfBirth } from "../model/dates.ts";
 import { spousesOf } from "../model/tree.ts";
 import type { TreeState } from "../model/types.ts";
-import type { Box, Gaps, Graph } from "./layout.ts";
+import type { Graph } from "./families.ts";
+import type { Box, Gaps } from "./layout.ts";
 import { NODE_W } from "./measure.ts";
 import { mean } from "../util.ts";
 

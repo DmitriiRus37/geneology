@@ -1,4 +1,4 @@
-import type { Person, Sex, TreeState } from "./types.ts";
+import type { Person, Sex } from "./types.ts";
 
 export const norm = (s: string): string =>
   String(s || "")
@@ -40,14 +40,6 @@ export function matches(p: Pick<Person, "name" | "maiden" | "alt">, filter: stri
   const f = norm(filter);
   if (!f) return true;
   return allNames(p).some((n) => n.indexOf(f) > -1);
-}
-
-export function findByName(state: TreeState, name: string): string | null {
-  const key = norm(name);
-  const ids = Object.keys(state.people);
-  for (const id of ids) if (norm(state.people[id].name) === key) return id;
-  for (const id of ids) if (nameForms(state.people[id]).indexOf(key) > -1) return id;
-  return null;
 }
 
 const MALE_A = [

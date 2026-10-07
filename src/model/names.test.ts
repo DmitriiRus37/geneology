@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { allNames, findByName, guessSex, matches, nameForms } from "./names.ts";
-import { addPerson } from "./tree.ts";
-import { emptyState } from "./types.ts";
+import { allNames, guessSex, matches, nameForms } from "./names.ts";
 
 test("sex from the patronymic — Cyrillic is not caught by \\b, so every word is checked with an anchor", () => {
   assert.equal(guessSex("Иван Егорович Якунин"), "m");
@@ -27,16 +25,6 @@ test("strict matching does not glue sisters together by a shared maiden name", (
   assert.ok(forms.includes("раиса алексеевна якунина"), "the surname is substituted into the same given name and patronymic");
   assert.ok(!forms.includes("якунина"), "a bare surname must not appear among the strict forms");
   assert.ok(allNames(p).includes("якунина"), "but in the loose search it must");
-});
-
-test("search by name: two sisters stay two people", () => {
-  const s = emptyState();
-  const a = addPerson(s, { name: "Раиса Алексеевна Стыраневская", maiden: "Якунина" });
-  const b = addPerson(s, { name: "Татьяна Алексеевна Гурылева", maiden: "Якунина" });
-  assert.notEqual(a, b);
-  assert.equal(findByName(s, "Раиса Алексеевна Якунина"), a);
-  assert.equal(findByName(s, "Татьяна Алексеевна Якунина"), b);
-  assert.equal(Object.keys(s.people).length, 2);
 });
 
 test("the letter ё and letter case do not get in the way of the sidebar search", () => {

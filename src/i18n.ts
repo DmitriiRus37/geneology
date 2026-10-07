@@ -203,6 +203,7 @@ const RU: Record<string, string> = {
 
   "date.born": "р. ",
   "date.died": "† ",
+  "card.maiden": "ур. {name}",
 };
 
 const EN: Record<string, string> = {
@@ -393,6 +394,7 @@ const EN: Record<string, string> = {
 
   "date.born": "b. ",
   "date.died": "d. ",
+  "card.maiden": "ур. {name}",
 };
 
 const DICT: Record<Lang, Record<string, string>> = { ru: RU, en: EN };

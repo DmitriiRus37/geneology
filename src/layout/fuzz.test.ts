@@ -18,6 +18,7 @@ import { rng, synthTree } from "../testing/trees.ts";
 import { computeEdges } from "./edges.ts";
 import { bboxOf, layout } from "./layout.ts";
 import { hitsCard, type Rect } from "./route.ts";
+import { nodeCards } from "../testing/cards.ts";
 
 const TREES = 200;
 const finite = (v: number) => Number.isFinite(v);
@@ -28,7 +29,7 @@ type Fault = { through: boolean; text: string };
 function faults(s: TreeState): Fault[] {
   const found: Fault[] = [];
   const fault = (text: string) => found.push({ through: false, text });
-  const { pos, level } = layout(s);
+  const { pos, level } = layout(s, nodeCards());
   const ids = Object.keys(pos);
 
   for (const id of ids) {

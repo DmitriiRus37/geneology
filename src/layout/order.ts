@@ -21,7 +21,8 @@ import { extent, mean, push } from "../util.ts";
 import { overlapY, sideBySide } from "./couple.ts";
 import { edgeStats } from "./crossings.ts";
 import { computeEdges } from "./edges.ts";
-import { rectOf, type Box, type Graph, type Unions } from "./layout.ts";
+import type { Graph, Unions } from "./families.ts";
+import { rectOf, type Box } from "./layout.ts";
 
 /** A block — a person with their spouses, standing in the row as one piece. */
 interface Block {

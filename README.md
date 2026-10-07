@@ -246,10 +246,13 @@ src/
     names.ts    name forms, search, sex detection
     tree.ts     links, cycle checks, normalisation of files, hiding ancestors, siblings
     kin.ts      who is who to whom: father, mother, husband, wife, son, daughter, sibling
-    store.ts    reducer, undo history, browser storage as the fallback
+    store.ts    reducer and undo history
   layout/     layout and geometry, no DOM
-    measure.ts  card size, line wrapping and clipping
-    layout.ts   generations, components, family units, row order
+    measure.ts  card size, line wrapping and clipping; the measuring and the words come from outside
+    layout.ts   the pipeline: card boxes, rows, the unplaced block, pinned cards
+    families.ts parents and children, connected pieces, family units for the layout and for the lines
+    levels.ts   generations: which row everyone stands in
+    rows.ts     the first row order, by traversal
     place.ts    x placement: families as clusters packed by contour, in-laws above their child
     order.ts    reordering people within rows so that lines cross less
     crossings.ts crossing and proximity counters shared by the layout and the metrics
@@ -260,7 +263,8 @@ src/
   ui/         React components, rendering and input only
     bits.tsx    shared bits: date field, button row, person line, "close on click outside"
     sheet.ts    the side panel as a sheet on a phone: three heights, drag and flick
-  io/         disk.ts talks to the server; JSON save/open, SVG, PNG and PDF export
+    cards.ts    what the layout needs from the screen: a canvas to measure text, card words in the language
+  io/         disk.ts talks to the server, local.ts keeps a copy in the browser; JSON save/open, SVG, PNG and PDF export
   data/       family.json, a small sample tree used to seed an empty persons/
 tools/metrics.ts  layout quality metrics
 tools/smoke.mjs   smoke check of a running instance, local or remote
@@ -269,7 +273,9 @@ docker-compose-prod.yml  what runs on the server: one service, no database, no v
 Makefile          build, ship, logs, backup
 ```
 
-The layout is a pure function `layout(state) → { pos, level, tl, lonePlate }`. Its result
+The layout is a pure function `layout(state, cards) → { pos, level, tl, lonePlate }`,
+where `cards` sizes a card (the browser measures with a canvas, the tests and the metrics
+by characters). Its result
 is memoised and handed to the components; dragging a card does not recompute the layout,
 it replaces one coordinate.
 
@@ -585,10 +591,13 @@ src/
     names.ts    формы имени, поиск, определение пола
     tree.ts     связи, проверка петель, приведение файла к валидному виду, скрытие предков, сиблинги
     kin.ts      кто кем приходится: отец, мать, муж, жена, сын, дочь, брат, сестра
-    store.ts    редьюсер, история отмен, запасное хранилище в браузере
+    store.ts    редьюсер и история отмен
   layout/     раскладка и геометрия, тоже без DOM
-    measure.ts  размеры карточки, перенос и обрезка строк
-    layout.ts   поколения, компоненты, семейные ячейки, порядок рядов
+    measure.ts  размеры карточки, перенос и обрезка строк; замер и слова приходят снаружи
+    layout.ts   весь конвейер: карточки, ряды, блок неразмещённых, закреплённые карточки
+    families.ts родители и дети, связные куски, семейные ячейки для раскладки и для линий
+    levels.ts   поколения: кто в каком ряду
+    rows.ts     первый порядок в рядах, обходом
     place.ts    расстановка по x: семьи гроздями по контуру, родители мужа или жены — над ним
     order.ts    перестановка людей в рядах, чтобы линии меньше пересекались
     crossings.ts счётчики пересечений и сближений линий — общие для раскладки и метрик
@@ -599,7 +608,8 @@ src/
   ui/         React-компоненты, только отрисовка и ввод
     bits.tsx    общие мелочи: поле даты, ряд кнопок, строка человека, «закрыть по щелчку мимо»
     sheet.ts    боковая панель как шторка на телефоне: три высоты, перетаскивание и смахивание
-  io/         disk.ts — обмен с сервером; сохранение JSON, выгрузка SVG, PNG и PDF
+    cards.ts    что раскладке нужно от экрана: канвас для замера текста, слова карточки на нужном языке
+  io/         disk.ts — обмен с сервером, local.ts — копия в браузере; сохранение JSON, выгрузка SVG, PNG и PDF
   data/       family.json — небольшое образцовое древо, им заполняется пустая persons/
 tools/metrics.ts  метрики качества раскладки
 tools/smoke.mjs   проверка поднятого экземпляра, своего или удалённого
@@ -608,7 +618,9 @@ docker-compose-prod.yml  что крутится на сервере: одна �
 Makefile          сборка, выкладка, логи, резервная копия
 ```
 
-Раскладка — чистая функция `layout(state) → { pos, level, tl, lonePlate }`. Её результат
+Раскладка — чистая функция `layout(state, cards) → { pos, level, tl, lonePlate }`,
+где `cards` задаёт размер карточки (браузер меряет канвасом, тесты и метрики — по числу
+символов). Её результат
 мемоизуется и раздаётся компонентам; перетаскивание карточки не пересчитывает раскладку,
 а подменяет одну координату.
 

@@ -18,6 +18,7 @@ import { t as translate, type Lang } from "../i18n.ts";
 import { layout } from "../layout/layout.ts";
 import { initialAppState, type AppState } from "../model/store.ts";
 import { synthTree } from "../testing/trees.ts";
+import { nodeCards } from "../testing/cards.ts";
 
 type Components = Record<string, ComponentType<any>>;
 
@@ -152,7 +153,7 @@ test("the menu of a couple's line", (t) => {
 test("the canvas: plain, with someone selected, and while picking a person", (t) => {
   narrow = false;
   const s = initialAppState(synthTree({ seed: 11, size: 10 }));
-  const lay = layout(s.tree);
+  const lay = layout(s.tree, nodeCards());
   const board = (state: AppState, pick: unknown) =>
     draw(h(ui.Board, { layout: lay, filter: "", pick, onPickDone: noop, sheet: 0 }), state);
   const id = first(s);
