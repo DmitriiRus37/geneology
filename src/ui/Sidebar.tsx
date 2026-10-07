@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { exportPdfFile } from "../io/exportPdf.ts";
 import { exportPngFile, exportSvgFile } from "../io/exportSvg.ts";
-import { downloadZip, uploadZip } from "../io/disk.ts";
 import { readJson, saveJson } from "../io/files.ts";
-import type { Where } from "../App.tsx";
+import type { Sync, Where } from "../io/sync.ts";
 import type { BBox } from "../layout/layout.ts";
 import { yearTag } from "../model/dates.ts";
 import { matches } from "../model/names.ts";
@@ -25,11 +24,15 @@ interface Props {
   bbox: BBox | null;
   where: Where;
   onReread: () => void;
+  /** an archive of cards replaces the tree on a server that keeps it in memory */
+  onUpload: Sync["upload"];
+  /** the tree as an archive; returns what went wrong, or null */
+  onDownload: Sync["download"];
   /** how much of the canvas the sheet covers on a phone, so the tree can keep clear of it */
   onSheet: (px: number) => void;
 }
 
-export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoTo, bbox, where, onReread, onSheet }: Props) {
+export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoTo, bbox, where, onReread, onUpload, onDownload, onSheet }: Props) {
   const { s, d, t, lang, setLang } = useApp();
   const fileRef = useRef<HTMLInputElement>(null);
   const zipRef = useRef<HTMLInputElement>(null);
@@ -258,7 +261,7 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
             <button
               className="quiet"
               onClick={async () => {
-                const err = await downloadZip();
+                const err = await onDownload();
                 if (err) d({ type: "notice", msg: msg("notice.zipFailed", { detail: err }) });
               }}
             >
@@ -348,7 +351,7 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
             const f = e.target.files?.[0];
             e.target.value = "";
             if (!f) return;
-            const r = await uploadZip(f);
+            const r = await onUpload(f);
             if ("error" in r) {
               d({ type: "notice", msg: msg("notice.zipFailed", { detail: r.error }) });
               return;

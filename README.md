@@ -264,7 +264,12 @@ src/
     bits.tsx    shared bits: date field, button row, person line, "close on click outside"
     sheet.ts    the side panel as a sheet on a phone: three heights, drag and flick
     cards.ts    what the layout needs from the screen: a canvas to measure text, card words in the language
-  io/         disk.ts talks to the server, local.ts keeps a copy in the browser; JSON save/open, SVG, PNG and PDF export
+    useSync.ts  the sync engine wired into React; keys.ts: what a key press means
+  io/         talking to the server and to files
+    api.ts      the server's HTTP API, one request per function
+    sync.ts     keeping the tree in step with the server: fingerprint, write queue, autosave
+    local.ts    the browser's copy when there is no server
+    files.ts, exportSvg.ts, exportPdf.ts: JSON save/open, SVG, PNG and PDF export
   data/       family.json, a small sample tree used to seed an empty persons/
 tools/metrics.ts  layout quality metrics
 tools/smoke.mjs   smoke check of a running instance, local or remote
@@ -609,7 +614,12 @@ src/
     bits.tsx    общие мелочи: поле даты, ряд кнопок, строка человека, «закрыть по щелчку мимо»
     sheet.ts    боковая панель как шторка на телефоне: три высоты, перетаскивание и смахивание
     cards.ts    что раскладке нужно от экрана: канвас для замера текста, слова карточки на нужном языке
-  io/         disk.ts — обмен с сервером, local.ts — копия в браузере; сохранение JSON, выгрузка SVG, PNG и PDF
+    useSync.ts  движок синхронизации, подключённый к React; keys.ts: что значит нажатая клавиша
+  io/         обмен с сервером и с файлами
+    api.ts      HTTP-API сервера, по функции на запрос
+    sync.ts     древо в ногу с сервером: отпечаток версии, очередь записи, автосохранение
+    local.ts    копия в браузере, когда сервера нет
+    files.ts, exportSvg.ts, exportPdf.ts: сохранение JSON, выгрузка SVG, PNG и PDF
   data/       family.json — небольшое образцовое древо, им заполняется пустая persons/
 tools/metrics.ts  метрики качества раскладки
 tools/smoke.mjs   проверка поднятого экземпляра, своего или удалённого

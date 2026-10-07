@@ -9,11 +9,12 @@
  *
  * The trees are synthetic: no real names end up in the snapshots.
  */
+import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createElement as h, type ComponentType, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer, type ViteDevServer } from "vite";
-import type { Where } from "../App.tsx";
+import type { Where } from "../io/sync.ts";
 import { t as translate, type Lang } from "../i18n.ts";
 import { layout } from "../layout/layout.ts";
 import { initialAppState, type AppState } from "../model/store.ts";
@@ -70,6 +71,8 @@ function sidebar(where: Where = DISK, filter = "") {
     bbox: null,
     where,
     onReread: noop,
+    onUpload: noop,
+    onDownload: noop,
     onSheet: noop,
   });
 }
@@ -112,6 +115,22 @@ test("the footer for each place the tree can live", (t) => {
   };
   const footer = (html: string) => html.slice(html.indexOf('<div class="rail-foot">'));
   t.assert.snapshot(Object.fromEntries(Object.entries(places).map(([k, w]) => [k, footer(draw(sidebar(w), s))])));
+});
+
+test("known issue: on a phone the save status and «Reread» live only at the foot of the sheet", (t) => {
+  narrow = true;
+  t.after(() => {
+    narrow = false;
+  });
+  const s = small();
+  const panel = draw(sidebar({ ...DISK, blocked: "conflict" }), s);
+  const foot = panel.indexOf('<div class="rail-foot">');
+  const status = translate("ru", "where.conflict");
+  const reread = translate("ru", "where.reread");
+  assert.ok(foot > 0 && panel.indexOf(status) > foot && panel.indexOf(reread) > foot, "both are in the footer");
+  assert.equal(panel.split(status).length, 2, "and nowhere else in the panel");
+  const bar = draw(h(ui.Toolbar, { onFit: noop, onZoom: noop }), s);
+  assert.ok(!bar.includes(status) && !bar.includes(reread), "nor on the bar over the canvas");
 });
 
 test("the bar over the canvas, with and without hidden people", (t) => {
