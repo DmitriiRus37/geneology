@@ -109,6 +109,8 @@ rejects the write and touches no file. The tab then stops saving and offers "Re-
 disk". A forgotten tab with an old tree can no longer erase fresh edits, and a tab refuses
 to write to an old server version that does not understand fingerprints. Editing the files
 by hand while the server runs is fine: the tab notices the difference and offers to re-read.
+A tree read from the server starts the undo history afresh, so undo can never bring back
+the tree from before it and write it over someone else's edits.
 
 ### Works without the server too
 
@@ -467,7 +469,9 @@ node server.mjs --port 8080            # другой порт
 сохранять и предлагает «Перечитать с диска». Забытая вкладка со старым древом не может
 стереть свежие правки, а в сервер старой версии, не понимающий отпечатков, вкладка писать
 отказывается. Править файлы руками при запущенном сервере можно: вкладка увидит
-расхождение и предложит перечитать.
+расхождение и предложит перечитать. Древо, прочитанное с сервера, начинает историю отмен
+заново: «Отменить» не вернёт древо, которое было до него, и не запишет его поверх чужих
+правок.
 
 ### Без сервера тоже работает
 

@@ -32,6 +32,8 @@ export interface AppState {
 }
 
 export type Action =
+  /** `silent`: a tree read from the server. No undo step, and the history goes with the old
+      tree: undo must never bring back a tree from before it and write it over the server's. */
   | { type: "load"; tree: TreeState; notice?: Msg; silent?: boolean }
   | { type: "select"; id: string | null }
   | { type: "add"; spec: PersonSpec; relation?: { mode: Relation; to: string } }
@@ -119,7 +121,7 @@ export function reducer(s: AppState, a: Action): AppState {
         ...s,
         tree: a.tree,
         selected: null,
-        history: a.silent ? s.history : s.history.concat([s.tree]).slice(-HISTORY_MAX),
+        history: a.silent ? [] : s.history.concat([s.tree]).slice(-HISTORY_MAX),
         fitSeq: s.fitSeq + 1,
         notice: a.notice ? { msg: a.notice, seq: (s.notice?.seq ?? 0) + 1 } : s.notice,
       };

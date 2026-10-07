@@ -294,7 +294,7 @@ test("the archive downloads under one name, and a failure comes back as its stat
   assert.equal(await h.sync.download(), "500");
 });
 
-test("known issue: after a reread, undo writes the old tree over someone else's edits", async (t) => {
+test("after a reread there is nothing to undo, so someone else's edits stay", async (t) => {
   const server = fakeServer({ tree: tree(2) });
   const h = harness(t, server);
   await h.mount();
@@ -304,14 +304,15 @@ test("known issue: after a reread, undo writes the old tree over someone else's 
   const theirs = tree(6);
   server.edit(theirs);
 
-  await h.sync.reread(); // a silent load keeps the undo history
+  await h.sync.reread(); // a load from the server clears the undo history
   h.render();
   await h.wait(0);
+  const writes = server.posts().length;
   h.act({ type: "undo" });
   await h.wait(SAVE_DELAY);
-  assert.equal(server.posts().at(-1), "POST /api/tree 200", "the write is accepted");
-  assert.deepEqual(names(server.tree), names(tree(2)), "the tree from before the reread is back on the server");
-  assert.notDeepEqual(names(server.tree), names(theirs), "the other tab's tree is gone");
+  assert.equal(h.state.notice?.msg.k, "msg.nothingToUndo");
+  assert.equal(server.posts().length, writes, "nothing goes out");
+  assert.deepEqual(names(server.tree), names(theirs), "the other tab's tree is still there");
 });
 
 test("known issue: a failed write other than a conflict is dropped silently and never retried", async (t) => {

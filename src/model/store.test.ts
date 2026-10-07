@@ -237,14 +237,16 @@ test("load replaces the tree, drops the selection, remembers the old tree for un
   assert.equal(reducer(next, { type: "undo" }).tree, s.tree, "the tree from before the load comes back");
 });
 
-test("known issue DOM-2: a silent load keeps the old undo history, so undo brings back the tree from before it", () => {
+test("a silent load clears the undo history: nothing from before it can come back", () => {
   const { s, dad } = family();
   const edited = reducer(s, { type: "remove", id: dad }); // history: [family]
   const fromServer = emptyState();
   addPerson(fromServer, { name: "Вера Николаевна Белкина" });
   const reread = reducer(edited, { type: "load", tree: fromServer, silent: true });
-  assert.deepEqual(reread.history, [s.tree], "the silent load pushed nothing and kept the old history");
-  assert.equal(reducer(reread, { type: "undo" }).tree, s.tree, "undo skips over the loaded tree to one from before it");
+  assert.deepEqual(reread.history, []);
+  const undone = reducer(reread, { type: "undo" });
+  assert.equal(undone.tree, fromServer, "undo leaves the loaded tree alone");
+  assert.equal(undone.notice?.msg.k, "msg.nothingToUndo");
 });
 
 test("select takes the id it is given", () => {
