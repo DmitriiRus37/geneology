@@ -3,7 +3,7 @@
  * write queue with the fingerprint check that keeps a stale tab from overwriting
  * fresh edits.
  */
-import { cardsToTree, okId, treeToCards, VIEW, type WireTree } from "../src/model/cards.ts";
+import { cardIdOf, cardsToTree, okId, treeToCards, VIEW, type WireTree } from "../src/model/cards.ts";
 import type { Store } from "./stores.ts";
 
 /**
@@ -61,11 +61,13 @@ export function createTree(store: Store): Tree {
     for (const [name, text] of cards) if (await store.write(name, text)) written++;
     await store.write(VIEW, view);
 
-    // deleted people leave together with their files
+    // deleted people leave together with their files; a file that was nobody's card
+    // stays where it is: it was never shown, so nobody can have meant to delete it
     let removed = 0;
     const keep = new Set(cards.map(([name]) => name));
     for (const name of (await store.names()) ?? []) {
       if (name.startsWith("_") || keep.has(name)) continue;
+      if (!cardIdOf(name, await store.read(name))) continue;
       await store.remove(name);
       removed++;
     }

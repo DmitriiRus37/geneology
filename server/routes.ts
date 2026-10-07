@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
+import { cardIdOf } from "../src/model/cards.ts";
 import type { AccessLog } from "./accesslog.ts";
 import type { Attempts } from "./attempts.ts";
 import { COOKIE, type Auth, type Role } from "./auth.ts";
@@ -193,7 +194,10 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
         } catch (e) {
           return json(res, 400, { ok: false, error: String(e && (e as Error).message) });
         }
-        if (!cards.size) return json(res, 400, { ok: false, error: "there are no cards (.json) in the archive" });
+        // the view alone, or only files that are nobody's card, would wipe the tree
+        if (![...cards].some(([name, text]) => cardIdOf(name, text))) {
+          return json(res, 400, { ok: false, error: "there are no cards (.json) in the archive" });
+        }
         const out = await tree.upload(cards);
         const people = Object.keys(out.tree?.people ?? {}).length;
         console.log(now() + "  archive loaded, people: " + people);

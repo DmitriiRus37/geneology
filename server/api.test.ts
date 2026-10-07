@@ -243,14 +243,15 @@ describe("a server in memory", () => {
     assert.equal(JSON.parse(files["persons/p3.json"]).fx, 10.12);
   });
 
-  test("known issue SRV-V3: an archive holding only the view file is accepted and wipes the tree", async () => {
-    const r = await fetch(srv.base + "/api/upload", {
-      method: "POST",
-      body: new Uint8Array(zip({ "persons/_view.json": '{"timeline":false,"gap":1,"hidden":[]}' })),
-    });
-    assert.equal(r.status, 200);
-    assert.equal((await r.json()).people, 0);
-    assert.deepEqual((await getTree(srv.base)).body.tree.people, {});
+  test("an archive with no person's card in it is refused and the tree stays", async () => {
+    const before = (await getTree(srv.base)).body.tree.people;
+    const archives: Record<string, string>[] = [{ "persons/_view.json": '{"timeline":false,"gap":1,"hidden":[]}' }, { "persons/p9.json": "{ not json" }];
+    for (const files of archives) {
+      const r = await fetch(srv.base + "/api/upload", { method: "POST", body: new Uint8Array(zip(files)) });
+      assert.equal(r.status, 400);
+      assert.equal((await r.json()).error, "there are no cards (.json) in the archive");
+    }
+    assert.deepEqual((await getTree(srv.base)).body.tree.people, before);
   });
 });
 
@@ -374,8 +375,8 @@ describe("the sign-in log and the address a client claims", () => {
   });
 });
 
-describe("known issues of the folder store", () => {
-  test("known issue SRV-1: a letter split between two parts of the body is stored broken", async () => {
+describe("edge cases of the stores", () => {
+  test("a letter split between two parts of the body arrives whole", async () => {
     const srv = await startServer({ store: "memory" });
     try {
       const name = "Иван Петрович Орлов";
@@ -383,13 +384,13 @@ describe("known issues of the folder store", () => {
       const at = body.indexOf(Buffer.from("И")) + 1; // between the two bytes of "И"
       const r = await postInTwoParts(srv.base, "/api/tree", body, at);
       assert.equal(r.status, 200);
-      assert.equal((await getTree(srv.base)).body.tree.people.p1.name, "��ван Петрович Орлов");
+      assert.equal((await getTree(srv.base)).body.tree.people.p1.name, name);
     } finally {
       await srv.stop();
     }
   });
 
-  test("known issue SRV-2: a card that does not parse is deleted by the next write", async () => {
+  test("a card that does not parse survives the next write", async () => {
     const srv = await startServer({
       store: "disk",
       files: { "p1.json": card("p1", "Иван Петрович Орлов"), "p2.json": card("p2", "Анна Сергеевна Орлова").replace('"name"', '"name":,') },
@@ -398,8 +399,8 @@ describe("known issues of the folder store", () => {
       const { body } = await getTree(srv.base);
       assert.deepEqual(Object.keys(body.tree.people), ["p1"], "the broken card is skipped on read");
       const out = await postTree(srv.base, body.rev, body.tree);
-      assert.equal(out.body.removed, 1);
-      assert.equal(existsSync(join(srv.dir, "p2.json")), false);
+      assert.equal(out.body.removed, 0);
+      assert.equal(existsSync(join(srv.dir, "p2.json")), true);
     } finally {
       await srv.stop();
     }
@@ -417,7 +418,7 @@ describe("known issues of the folder store", () => {
     }
   });
 
-  test("known issue ARC-V2: other JSON files in the folder are taken for cards, rewritten or deleted", async () => {
+  test("known issue ARC-V2: another JSON file whose name passes as an id is taken for a card and rewritten", async () => {
     const srv = await startServer({
       store: "disk",
       files: {
@@ -433,7 +434,7 @@ describe("known issues of the folder store", () => {
       const settings = json(srv.dir, "settings.json");
       assert.equal(settings.id, "settings");
       assert.equal("theme" in settings, false, "its own content is gone");
-      assert.equal(existsSync(join(srv.dir, "genealogy (1).json")), false, "a file whose name is not an id is deleted");
+      assert.equal(existsSync(join(srv.dir, "genealogy (1).json")), true, "a file that is nobody's card is left alone");
     } finally {
       await srv.stop();
     }

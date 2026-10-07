@@ -123,6 +123,23 @@ export function cardsToTree(files: [name: string, text: string][] | null, warn: 
   };
 }
 
+/**
+ * The id a file of the store stands for, read the way `cardsToTree` reads it; null when
+ * the file is no person's card — the view, a file that does not parse, or one with no
+ * usable id. A file like that was never shown to anybody, so nothing may delete it.
+ */
+export function cardIdOf(name: string, text: string): string | null {
+  if (name === VIEW || name.startsWith("_")) return null;
+  let raw: any;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const id = okId(raw?.id) ? raw.id : name.slice(0, -5);
+  return okId(id) ? id : null;
+}
+
 /** What a save writes: every card in the order of the people, then the view. */
 export interface CardSet {
   ids: string[];

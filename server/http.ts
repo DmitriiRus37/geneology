@@ -10,7 +10,9 @@ const MAX_BODY = 32e6;
 export const readBody = (req: IncomingMessage): Promise<string> =>
   new Promise((res, rej) => {
     let data = "";
-    req.on("data", (c) => {
+    // decoded as a stream: a letter split between two chunks of the body arrives whole
+    req.setEncoding("utf8");
+    req.on("data", (c: string) => {
       data += c;
       if (data.length > MAX_BODY) rej(new Error("request body too large"));
     });

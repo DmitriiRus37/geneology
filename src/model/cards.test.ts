@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fromFolder } from "../../tools/metrics.ts";
 import { synthTree } from "../testing/trees.ts";
-import { cardsToTree, treeToCards, VIEW, type CardSet } from "./cards.ts";
+import { cardIdOf, cardsToTree, treeToCards, VIEW, type CardSet } from "./cards.ts";
 import { normalize } from "./tree.ts";
 import type { TreeState } from "./types.ts";
 
@@ -108,4 +108,20 @@ test("known issue: the metrics reader takes no id from the file name and no okId
   ]);
   assert.deepEqual(Object.keys(server.people), ["a", "b"]);
   assert.deepEqual(Object.keys(metrics.people).sort(), ["b c", "undefined"]);
+});
+
+test("cardIdOf names exactly the people cardsToTree reads", () => {
+  const files: [string, string][] = [
+    ["a.json", '{"name":"Анна"}'],
+    ["b.json", '{"id":"b2","name":"Борис"}'],
+    ["c.json", "{ not json"],
+    ["d e.json", "{}"],
+    ["f.json", '{"id":"g h"}'],
+    ["_notes.json", '{"id":"n"}'],
+    [VIEW, '{"hidden":[]}'],
+  ];
+  const read = Object.keys(cardsToTree(files, () => {})!.people).sort();
+  const named = files.map(([n, t]) => cardIdOf(n, t)).filter((id) => id !== null).sort();
+  assert.deepEqual(named, read);
+  assert.deepEqual(read, ["a", "b2", "f"]);
 });
