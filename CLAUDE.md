@@ -29,8 +29,33 @@ admin opens the page and only for the rows shown;
 `--host`/`HOST` sets the bind address, still `127.0.0.1` by default. `/api/health` is the
 only route outside the guard. `LOG_DIR` turns on the request log (one line per request,
 no headers and no bodies); it rotates itself at `LOG_MAX` (10 MB) keeping `LOG_KEEP` (3)
-gzipped files. Without `LOG_DIR` nothing is written, so local runs stay quiet. Deployment lives in `Dockerfile`, `docker-compose-prod.yml`,
-`Makefile` and the `deploy` / `backup-tree` skills in `.claude/skills/`.
+gzipped files. Without `LOG_DIR` nothing is written, so local runs stay quiet. Both logs
+record the connection's address: `X-Forwarded-For` is ignored unless
+`GENEALOGY_TRUST_PROXY=1` (then only its rightmost entry counts) — production publishes the
+container port directly, with no proxy in front. Deployment lives in `Dockerfile`, `docker-compose-prod.yml`,
+`Makefile` and the `deploy` / `backup-tree` skills in `.claude/skills/`. The final image
+copies only `server.mjs`, `server/*.ts` (tests excluded via `.dockerignore`) and
+`src/model/cards.ts`: anything new the server imports from `src/` must be added there, or
+the server breaks only in production.
+
+The card format is one contract, `src/model/cards.ts` (`cardsToTree`, `treeToCards`,
+`okId`, `cardIdOf`): a file is a person's card only if it parses to an object with a string
+`name` or `id`, and a save deletes only files that were cards — anything else in the folder
+is never read, rewritten or deleted. `okId` also refuses `Object.prototype` names. On the
+client `normalize` in `src/model/tree.ts` gives people with unusable ids fresh ones, drops
+duplicate links and keeps unknown card fields in `Person.extra`, which `treeToCards` writes
+back.
+
+The client in layers: `src/io/api.ts` (stateless HTTP calls), `src/io/sync.ts` (the sync
+engine: fingerprint, write queue, autosave, probe, reread; network, timers, localStorage and
+`sendBeacon` are injected) and `src/ui/useSync.ts` (React wiring; `App.tsx` only calls it).
+`src/ui/Board.tsx` assembles `src/ui/board/`: `view.ts` (pure view arithmetic),
+`gestures.ts` (the pointer/touch automaton, timers injected), `useView`/`useGestures`,
+`Popovers.tsx`. The layout takes a card sizer, `layout(tree, cards)`: the browser measures
+text with a canvas (`src/ui/cards.ts`), Node by characters (`src/testing/cards.ts`). Facts
+the stylesheet repeats (the phone media query, the bar height) live in `src/ui/screen.ts`,
+and `src/ui/css.test.ts` keeps them equal to `styles.css`. A tree read from the server
+clears the undo history: undo must never write an older tree over the server's.
 
 ## Commands
 
@@ -127,6 +152,45 @@ leave those snapshots untouched; a deliberate layout change rewrites them with
 
 Tests named "known issue …" pin a known bug exactly as it behaves today, so that a
 rewrite cannot change it unnoticed. Fixing the bug means turning its test around.
+
+## Testing and checking changes
+
+- Test at boundaries that do not move: the HTTP API (`server/testing.ts` starts a real
+  `node server.mjs` on a free port in a temp folder), the reducer, the layout's output, the
+  rendered markup, the sync engine and the gesture automaton. Do not pin internal helpers.
+- Node 26 runs `.ts` but not `.tsx`: whatever a Node test imports must live in a `.ts`
+  file. Markup is rendered through Vite's SSR loader in `src/ui/render.test.ts`.
+  `src/purity.test.ts` refuses browser globals in `model/` and `layout/`.
+- Engines with time in them take their timers from outside and are tested with
+  `t.mock.timers`: `src/io/sync.test.ts` puts a fake server behind `fetch` and a harness
+  that commits the way React renders do; `src/ui/board/gestures.test.ts` plays fingers and
+  a mouse against the automaton.
+- Tools with side effects run their main only under `import.meta.main`, so tests can
+  import them (`tools/metrics.ts`).
+- Synthetic trees for tests come from `src/testing/trees.ts`; snapshots and fixtures hold
+  ids and numbers, never real names.
+- A change that moves UI code without changing behaviour is checked against the previous
+  build in the built-in browser: a `git worktree` of the old commit (symlink
+  `node_modules`), `npm run build` in both, two servers on two copies of the data with
+  `LOG_DIR` set, the same scripted scenario in both, then compare the `access.log` request
+  sequences, DOM fingerprints and the data folders. Touch is simulated with synthetic
+  `PointerEvent`/`TouchEvent`s (stub `setPointerCapture`). Pitfalls of the hidden pane: CSS
+  transitions do not run (inject `#rail{transition:none!important}` before measuring),
+  `.focus()` sends no `focusin`, `resize_window` resets between turns, and a download
+  there is a real download.
+
+## Working agreements
+
+- Commits only when the user says so, never a push. Subject `area: what happened`, short
+  and lowercase, then a bullet body; list the files explicitly. Each commit must pass
+  `make check` on its own: check a staged state with
+  `git checkout-index -a --prefix=<scratch dir>/` plus a `node_modules` symlink. Changes
+  of two tasks in one file (often `README.md`) are split by staging an edited copy.
+- Parallel agents work in separate `git worktree`s (symlink `node_modules`, never run npm
+  there: it is shared) and their diffs are applied to the main checkout one at a time;
+  agents touching the same files go one after another.
+- The shell is zsh on macOS: a pipeline's statuses are in `$pipestatus`, and there is no
+  `timeout` command.
 
 ## Documentation rules
 

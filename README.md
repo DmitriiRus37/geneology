@@ -113,6 +113,14 @@ A tree read from the server starts the undo history afresh, so undo can never br
 the tree from before it and write it over someone else's edits. A save deletes only the
 cards of people removed in the tab: a file the server cannot read as a card is left alone.
 
+A save that fails for any other reason — the network, a server error — is not lost: it is
+retried every few seconds until it goes through, and the app says when saving fails and when
+it works again. If a server that keeps the tree in memory restarts empty, the open tab
+writes its tree back and says so. When the page is hidden, a pending save goes out at once;
+closing a tab whose unsaved tree is too large for the browser's closing request makes the
+browser ask first. A slow server is asked three times before the app falls back to keeping
+edits in the browser, and it says so when it does.
+
 ### Works without the server too
 
 ```bash
@@ -147,7 +155,10 @@ was let through, and which browser. The newest 10 000 (`GENEALOGY_ATTEMPTS` chan
 are kept as `logs/logins.jsonl` next to the request log — one JSON object per line,
 `{"when":…,"login":…,"address":…,"result":…,"browser":…}` — so a restart or a redeploy does
 not lose them, and the page links to the raw file. JSON does the escaping, so nothing the
-login field can carry will forge a record or break a line.
+login field can carry will forge a record or break a line. Both logs record the address of
+the connection itself: `X-Forwarded-For` is anybody's to write, so it is ignored unless
+`GENEALOGY_TRUST_PROXY=1` is set — only for a reverse proxy of your own in front of the
+container, whose entry (the last one) is then used.
 
 Each row also shows where the address is, roughly — `Warsaw, PL`. That comes from
 ipinfo.io, with get.geojs.io and ipwho.is behind it: the first to answer wins, so one being
@@ -261,6 +272,7 @@ src/
     crossings.ts crossing and proximity counters shared by the layout and the metrics
     timeline.ts placement by year of birth
     route.ts    routing lines around cards
+    detour.ts   a way round the cards on a grid, for a line the usual route cannot take
     edges.ts    the lines: couple bracket, bridges, arrows to children
     couple.ts   side-by-side couple geometry shared by the lines and the row-order scoring
   ui/         React components, rendering and input only
@@ -300,9 +312,9 @@ it replaces one coordinate.
   instead of creating a twin. Names are entered as first name, patronymic, surname.
 - **Arrows on the card**: click a person to get "parent" above, "child" below, "spouse" and
   "sibling" at the sides. The spouse goes to whichever side is freer.
-- **Siblings.** If the person has parents in the tree, the new sibling becomes their child
-  with ordinary lines. Otherwise the kinship is recorded explicitly and drawn dashed; such
-  people stand in one row, next to each other.
+- **Siblings.** If one of the two has parents in the tree and the other has none, the other
+  gets the same parents, with ordinary lines. If both have parents, or neither, the kinship
+  is recorded explicitly and drawn dashed; such people stand in one row, next to each other.
 - **Hide ancestors.** Select a person and hide their ancestors together with everything
   growing from them, except the person, their family and descendants. "Bring everyone back"
   restores the view. Remembered in `_view.json`.
@@ -319,17 +331,20 @@ it replaces one coordinate.
   each relation can be removed separately.
 - **Lines do not pass through cards.** If someone stands in the way, the vertical moves
   into the nearest gap between cards and comes back under it; turns are made in the gaps
-  between rows.
+  between rows. By years too: an estimated year keeps clear of the parents' and children's,
+  and a line that cannot take the usual down–across–down route finds its way round.
 - **Kinship labels**: the list shows who each person is to the selected one. Two roles at
   once are shown together on one line.
 - **Same-sex marriage is not created**; the app explains the refusal. Unknown sex of either
-  person does not block it.
+  person does not block it. Nor is a marriage with one's own ancestor or descendant, nor a
+  parent link that would make two spouses parent and descendant.
 - **Namesakes are allowed.** "Add" always creates a new person; it warns about a namesake
   but does not stop you.
 - People not linked to anyone stand in a separate block under the tree, below a dashed line
   with a caption.
 - Sex is detected from the patronymic, the surname, the name ending and role words; a
-  coloured strip at the top of the card shows it. It can be corrected in the panel.
+  coloured strip at the top of the card shows it. A name the rules do not recognise (one in
+  Latin letters, say) leaves it unknown. It can be corrected in the panel.
 - **Timeline mode**: vertical position by year of birth with a sticky year scale on the
   left. Missing years are estimated from relatives and marked; a spouse counts more than
   other relatives.
@@ -356,8 +371,16 @@ it replaces one coordinate.
   and closes it. Tapping a person on the tree brings the sheet up with their fields and
   keeps them in sight above it; tapping the empty canvas sends it back down. A finger pans
   the tree even when it starts on a card — to move a card, rest the finger on it for a
-  moment first. The canvas controls fold into one row at the top, the rest behind "more".
-- Spacing slider, card dragging, search with highlighting, undo (⌘Z), JSON save and open.
+  moment first; a second finger while you carry it puts it back, unsaved, and zooms. The
+  canvas controls fold into one row at the top, the rest behind "more". While edits are not
+  being saved, the head of the sheet says so and offers to re-read.
+- **Undo (⌘Z)** takes back one step. Typing into a field is one step per field; changing
+  the spacing or switching to years can be undone, pinned cards included. Inside a text
+  field ⌘Z and ⇧⌘Z belong to the field's own typing.
+- **Files are forgiving.** A card with a broken link list still loads, an unusable id gets
+  a new one, a link written twice counts once, fields the app does not know are kept and
+  written back, and other JSON in the folder is left alone.
+- Spacing slider, card dragging, search with highlighting, JSON save and open.
 - **Export as an image**: SVG, PNG and PDF. The PDF holds the whole tree on one page of its
   own size, losslessly compressed, without libraries.
 
@@ -475,6 +498,15 @@ node server.mjs --port 8080            # другой порт
 правок. Сохранение удаляет только карточки людей, удалённых во вкладке: файл, который
 сервер не может прочитать как карточку, остаётся на месте.
 
+Сохранение, сорвавшееся по другой причине — сеть, ошибка сервера, — не теряется: оно
+повторяется каждые несколько секунд, пока не пройдёт, а приложение говорит, когда
+сохранить не удалось и когда снова получилось. Если сервер, держащий древо в памяти,
+перезапустился пустым, открытая вкладка записывает своё древо обратно и сообщает об этом.
+Когда страница уходит в фон, отложенное сохранение уходит сразу; при закрытии вкладки с
+несохранённым древом, слишком большим для прощального запроса браузера, браузер сначала
+спросит. Медленный сервер спрашивают трижды, прежде чем перейти к хранению правок в
+браузере, — и об этом говорят.
+
 ### Без сервера тоже работает
 
 ```bash
@@ -508,6 +540,9 @@ zip-архивом кнопкой **«Загрузить архив»**, пра�
 по объекту JSON на строку, `{"when":…,"login":…,"address":…,"result":…,"browser":…}`, — так что
 перезапуск и выкладка их не теряют, а со страницы файл открывается как есть. Экранирует сам
 JSON: что бы ни набрали в поле логина, подделать запись или разорвать строку не выйдет.
+Оба журнала пишут адрес самого соединения: `X-Forwarded-For` может прислать кто угодно,
+поэтому он не учитывается, пока не задано `GENEALOGY_TRUST_PROXY=1` — только для своего
+обратного прокси перед контейнером; тогда берётся его запись, последняя.
 
 В каждой строке видно и примерное место адреса — `Warsaw, PL`. Его спрашивают у ipinfo.io, а
 за ним стоят get.geojs.io и ipwho.is: отвечает первый откликнувшийся, так что недоступность
@@ -619,6 +654,7 @@ src/
     crossings.ts счётчики пересечений и сближений линий — общие для раскладки и метрик
     timeline.ts расстановка по годам рождения
     route.ts    прокладка связей в обход карточек
+    detour.ts   обход карточек по сетке для линии, которой не годится обычный маршрут
     edges.ts    линии связей: скобка пары, мостики, стрелки к детям
     couple.ts   геометрия пары бок о бок — общая у линий и у оценки порядка рядов
   ui/         React-компоненты, только отрисовка и ввод
@@ -658,9 +694,9 @@ Makefile          сборка, выкладка, логи, резервная �
   существующего, а не плодит двойника. Имя вводится в порядке «Имя Отчество Фамилия».
 - **Стрелки у карточки** — щёлкните по человеку: сверху «родитель», снизу «ребёнок»,
   сбоку «супруг» и «брат/сестра». Сторона для супруга выбирается там, где свободнее.
-- **Брат или сестра.** Если у человека есть родители в древе, новый становится их
-  ребёнком — обычные линии. Если родителей нет, родство записывается само и рисуется
-  пунктиром; такие люди стоят в одном ряду и рядом.
+- **Брат или сестра.** Если у одного из двоих есть родители в древе, а у другого нет,
+  другой получает тех же родителей — обычные линии. Если родители есть у обоих или ни у
+  кого, родство записывается само и рисуется пунктиром; такие люди стоят в одном ряду и рядом.
 - **Скрыть предков.** Выберите человека и нажмите «Скрыть предков»: его предки и всё, что
   растёт от них, кроме него самого, его семьи и потомков, уходят с холста. «Вернуть всех»
   возвращает. Запоминается в `_view.json`.
@@ -677,17 +713,21 @@ Makefile          сборка, выкладка, логи, резервная �
   каждую связь можно убрать по отдельности.
 - **Линии не проходят сквозь карточки.** Если на пути связи стоит чужой человек,
   вертикаль уходит в ближайший просвет между карточками и возвращается под ним; повороты
-  делаются в зазорах между рядами.
+  делаются в зазорах между рядами. По годам тоже: оценённый год держится в стороне от лет
+  родителей и детей, а линия, которой не годится обычный маршрут «вниз — вбок — вниз»,
+  находит обход сама.
 - **Родня подписана** — у каждого в списке видно, кем он приходится выбранному. Две роли
   сразу показываются вместе одной строкой.
 - **Однополый брак не создаётся**, приложение объяснит отказ. Если пол хоть у одного не
-  указан — не мешает.
+  указан — не мешает. Не создаётся и брак со своим предком или потомком, и связь
+  «родитель — ребёнок», после которой супруги оказались бы предком и потомком.
 - **Тёзки разрешены.** «Добавить» всегда создаёт нового человека; про тёзку предупредит,
   но не помешает.
 - Кого ещё ни с кем не связали, тот стоит отдельным блоком под древом, под пунктирной
   чертой с подписью.
 - Пол определяется по отчеству, фамилии, окончанию имени и словам-ролям; цветная полоска
-  сверху карточки. Поправить можно в панели.
+  сверху карточки. Незнакомое правилам имя (например, латиницей) оставляет пол неизвестным.
+  Поправить можно в панели.
 - Режим **по годам** — вертикаль по году рождения, липкая шкала лет слева. Недостающие
   годы оцениваются по родне и помечаются, причём супруг важнее прочей родни.
 - **Родитель всегда ровно на ряд выше детей.** Если брак уводит человека вниз, вся его
@@ -713,9 +753,17 @@ Makefile          сборка, выкладка, логи, резервная �
   до половины экрана или почти во весь экран, а касание полоски открывает и закрывает её.
   Касание человека на древе поднимает шторку с его полями и держит его на виду над ней;
   касание пустого холста опускает её обратно. Палец двигает древо, даже если лёг на
-  карточку, — чтобы передвинуть карточку, на ней сначала надо задержать палец. Кнопки над
-  холстом сворачиваются в один ряд сверху, остальное — за «Ещё».
-- Ползунок **просвет**, перетаскивание карточек, поиск с подсветкой, отмена (⌘Z),
-  сохранение и открытие JSON.
+  карточку, — чтобы передвинуть карточку, на ней сначала надо задержать палец; второй
+  палец во время переноса возвращает карточку на место, не сохраняя, и включает масштаб.
+  Кнопки над холстом сворачиваются в один ряд сверху, остальное — за «Ещё». Пока правки не
+  сохраняются, об этом говорит шапка шторки и предлагает перечитать.
+- **Отмена (⌘Z)** возвращает один шаг. Ввод в поле — один шаг на поле; смену просвета и
+  переход «по годам» тоже можно отменить, вместе с закреплёнными карточками. В текстовом
+  поле ⌘Z и ⇧⌘Z относятся к набору в самом поле.
+- **Файлы прощают ошибки.** Карточка с испорченным списком связей всё равно читается,
+  негодный id получает новый, дважды записанная связь считается один раз, незнакомые
+  приложению поля сохраняются и пишутся обратно, а чужой JSON в папке не трогается.
+- Ползунок **просвет**, перетаскивание карточек, поиск с подсветкой, сохранение и открытие
+  JSON.
 - **Выгрузка картинкой**: SVG, PNG и PDF. В PDF попадает всё древо целиком, одной
   страницей размером с него самого, без потерь и без библиотек.
