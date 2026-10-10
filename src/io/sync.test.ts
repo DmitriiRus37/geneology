@@ -10,7 +10,7 @@ import { normalize } from "../model/tree.ts";
 import type { TreeState } from "../model/types.ts";
 import { synthTree } from "../testing/trees.ts";
 import type { Fetch } from "./api.ts";
-import { createSync, PROBE_TIMEOUT, SAVE_DELAY, type Where } from "./sync.ts";
+import { createSync, PROBE_TIMEOUT, PROBE_TRIES, RETRY_DELAY, SAVE_DELAY, type Where } from "./sync.ts";
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -32,6 +32,10 @@ function fakeServer({ store = "disk", tree = null, stale = false }: ServerOption
     hang: false,
     /** writes answer with this status instead */
     fail: 0,
+    /** writes get no answer at all: the connection is refused */
+    down: false,
+    /** run before the next writes, one each: another tab getting in between */
+    beforePost: [] as (() => void)[],
     rev: () => (srv.tree ? "r" + version : "empty"),
     /** another tab writes */
     edit(next: TreeState) {
@@ -53,6 +57,7 @@ function fakeServer({ store = "disk", tree = null, stale = false }: ServerOption
     const method = init.method ?? "GET";
     if (input === "/api/tree" && method === "GET") {
       if (srv.hang) {
+        srv.log.push(method + " " + input + " hangs");
         return new Promise((_, reject) =>
           init.signal?.addEventListener("abort", () => reject(new DOMException("gave up", "AbortError"))),
         );
@@ -62,6 +67,11 @@ function fakeServer({ store = "disk", tree = null, stale = false }: ServerOption
     }
     if (input === "/api/tree" && method === "POST") {
       const body = JSON.parse(String(init.body));
+      if (srv.down) {
+        srv.log.push(method + " " + input + " refused");
+        throw new TypeError("Failed to fetch");
+      }
+      srv.beforePost.shift()?.();
       if (srv.fail) return answer(input, method, srv.fail, { ok: false, error: "it broke" });
       if (body.rev !== srv.rev()) return answer(input, method, 409, { ok: false, conflict: true, rev: srv.rev() });
       srv.edit(body.tree);
@@ -265,7 +275,8 @@ test("without a server the tree is kept in the browser", async (t) => {
   const server = Object.assign(fakeServer(), { fetch: (async () => new Response("", { status: 404 })) as Fetch });
   const h = harness(t, server);
   await h.mount();
-  assert.deepEqual(h.where, { kind: "browser" });
+  assert.deepEqual(h.where, { kind: "browser" }, "at once");
+  assert.deepEqual(h.notices, [], "and without a word: that is the ordinary case");
   await h.wait(0);
   h.rename("Е");
   await h.wait(SAVE_DELAY);
@@ -315,7 +326,19 @@ test("after a reread there is nothing to undo, so someone else's edits stay", as
   assert.deepEqual(names(server.tree), names(theirs), "the other tab's tree is still there");
 });
 
-test("known issue: a failed write other than a conflict is dropped silently and never retried", async (t) => {
+test("a refused connection is no server either: the browser, at once and silently", async (t) => {
+  const server = Object.assign(fakeServer(), {
+    fetch: (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as Fetch,
+  });
+  const h = harness(t, server);
+  await h.mount();
+  assert.deepEqual(h.where, { kind: "browser" });
+  assert.deepEqual(h.notices, []);
+});
+
+test("a failed write stays unsaved and is tried again until it goes through, with the newest tree", async (t) => {
   const server = fakeServer({ tree: tree(2) });
   const h = harness(t, server);
   await h.mount();
@@ -323,44 +346,177 @@ test("known issue: a failed write other than a conflict is dropped silently and 
   server.fail = 500;
   h.rename("З");
   await h.wait(SAVE_DELAY);
-  await h.wait(SAVE_DELAY * 10);
   assert.deepEqual(server.posts().slice(1), ["POST /api/tree 500"]);
-  assert.deepEqual(h.notices, [], "nobody is told");
-  assert.equal(h.where?.kind === "disk" && h.where.blocked, null);
+  assert.deepEqual(h.notices, ["notice.saveFailed"]);
+  assert.equal(h.where?.kind === "disk" && h.where.blocked, null, "a failure is not a conflict");
+  assert.ok(h.sync.unsaved());
+
+  h.rename("Зе");
+  await h.wait(RETRY_DELAY - 1);
+  assert.equal(server.posts().length, 2, "an edit does not bring the retry forward");
+  await h.wait(1);
+  assert.deepEqual(server.posts().slice(1), ["POST /api/tree 500", "POST /api/tree 500"]);
+  assert.deepEqual(h.notices, ["notice.saveFailed"], "only the first failure in a row is told");
+
+  server.fail = 0;
+  await h.wait(RETRY_DELAY);
+  assert.equal(server.posts().at(-1), "POST /api/tree 200");
+  assert.equal(server.tree && Object.values(server.tree.people)[0].name, "Зе", "the newest tree went");
+  assert.deepEqual(h.notices, ["notice.saveFailed", "notice.saved"]);
+  assert.equal(h.sync.unsaved(), false);
+
+  h.rename("Зел");
+  await h.wait(SAVE_DELAY);
+  assert.equal(server.posts().length, 5, "then edits go out as ever");
+  assert.equal(server.tree && Object.values(server.tree.people)[0].name, "Зел");
+  await h.wait(RETRY_DELAY * 3);
+  assert.equal(server.posts().length, 5, "and nothing is retried once it went through");
+  assert.deepEqual(h.notices, ["notice.saveFailed", "notice.saved"]);
 });
 
-test("known issue: a server slower than the probe timeout is taken for none, silently", async (t) => {
+test("a write that gets no answer at all has failed too, and is tried again", async (t) => {
+  const server = fakeServer({ tree: tree(2) });
+  const h = harness(t, server);
+  await h.mount();
+  await h.wait(0);
+  server.down = true;
+  h.rename("Ж");
+  await h.wait(SAVE_DELAY);
+  await h.wait(RETRY_DELAY);
+  assert.deepEqual(server.posts().slice(1), ["POST /api/tree refused", "POST /api/tree refused"]);
+  assert.deepEqual(h.notices, ["notice.saveFailed"]);
+  server.down = false;
+  await h.wait(RETRY_DELAY);
+  assert.equal(server.posts().at(-1), "POST /api/tree 200");
+  assert.equal(server.tree && Object.values(server.tree.people)[0].name, "Ж");
+  assert.deepEqual(h.notices, ["notice.saveFailed", "notice.saved"]);
+});
+
+test("a failed write is not taken for saved: what the tab counts as written is what the server holds", async (t) => {
+  const server = fakeServer({ tree: tree(2) });
+  const h = harness(t, server);
+  await h.mount();
+  await h.wait(0);
+  const held = h.state.tree;
+  server.fail = 500;
+  h.rename("Л");
+  await h.wait(SAVE_DELAY);
+  h.act({ type: "undo" });
+  assert.equal(h.state.tree, held, "back to exactly what the server holds");
+  await h.wait(RETRY_DELAY);
+  assert.equal(server.posts().length, 2, "so the retry has nothing to send");
+  assert.deepEqual(h.notices, ["notice.saveFailed", "notice.saved"]);
+  assert.equal(h.sync.unsaved(), false);
+
+  server.fail = 0;
+  h.rename("Л");
+  await h.wait(SAVE_DELAY);
+  assert.equal(server.posts().at(-1), "POST /api/tree 200", "made again, the edit goes");
+  assert.equal(server.tree && Object.values(server.tree.people)[0].name, "Л");
+});
+
+test("a server slower than the probe timeout is asked again, then the tree stays in the browser with a word", async (t) => {
   const server = fakeServer({ tree: tree(2) });
   server.hang = true;
   const h = harness(t, server);
   await h.mount();
+  h.rename("И");
+  await h.wait(PROBE_TIMEOUT - 1);
+  assert.equal(h.where, null);
+  for (let i = 1; i < PROBE_TRIES; i++) {
+    await h.wait(i === 1 ? 1 : PROBE_TIMEOUT);
+    assert.equal(h.where, null, "still asking after " + i + " silences");
+  }
+  assert.equal(h.kept.length, 0, "while it is asked, nothing is written anywhere");
+  assert.deepEqual(h.notices, []);
+  await h.wait(PROBE_TIMEOUT);
+  assert.deepEqual(server.log, Array(PROBE_TRIES).fill("GET /api/tree hangs"));
+  assert.deepEqual(h.where, { kind: "browser" });
+  assert.deepEqual(h.notices, ["notice.serverSilent"]);
+  await h.wait(SAVE_DELAY);
+  assert.deepEqual(server.posts(), [], "the edits stay in the browser");
+  assert.equal(Object.values(h.kept.at(-1)?.people ?? {})[0]?.name, "И");
+});
+
+test("a slow server that answers the next time it is asked is used", async (t) => {
+  const server = fakeServer({ tree: tree(2) });
+  server.hang = true;
+  const h = harness(t, server);
+  await h.mount();
+  server.hang = false; // awake now, but the first question has already gone unanswered
   await h.wait(PROBE_TIMEOUT - 1);
   assert.equal(h.where, null);
   await h.wait(1);
-  assert.deepEqual(h.where, { kind: "browser" });
+  assert.deepEqual(h.where, { kind: "disk", dir: "/data/persons", store: "disk", guarded: false, role: "admin", blocked: null });
+  assert.deepEqual(names(h.state.tree), names(tree(2)));
   assert.deepEqual(h.notices, []);
-  h.rename("И");
-  await h.wait(SAVE_DELAY);
-  assert.deepEqual(server.posts(), [], "the edits stay in the browser");
-  assert.ok(h.kept.length > 0);
 });
 
-test("known issue: the closing write of a large tree is refused by the browser and nobody hears of it", async (t) => {
+test("the closing beacon goes only when something is unsaved", async (t) => {
+  const server = fakeServer({ tree: tree(2) });
+  const h = harness(t, server);
+  await h.mount();
+  await h.wait(0);
+  h.sync.flush(h.state.tree);
+  assert.equal(h.beacons.length, 0, "everything is on the server: nothing to send");
+
+  h.rename("П"); // a pending autosave
+  assert.ok(h.sync.unsaved());
+  assert.equal(h.sync.askOnClose(h.state.tree), false, "a beacon carries it: no need to ask");
+  h.sync.flush(h.state.tree);
+  assert.equal(h.beacons.length, 1);
+  assert.equal(h.beacons[0].sent, true);
+  await h.wait(SAVE_DELAY);
+  assert.equal(server.posts().length, 1, "what the beacon carried is not sent again behind it");
+
+  h.rename("Пе");
+  h.sync.hide(); // a write in flight
+  h.sync.flush(h.state.tree);
+  assert.equal(h.beacons.length, 2);
+  await h.wait(0);
+
+  server.fail = 500;
+  h.rename("Пет");
+  await h.wait(SAVE_DELAY); // a failed write
+  h.sync.flush(h.state.tree);
+  assert.equal(h.beacons.length, 3);
+});
+
+test("a hidden page sends a pending autosave at once, with an ordinary request", async (t) => {
+  const server = fakeServer({ tree: tree(2) });
+  const h = harness(t, server);
+  await h.mount();
+  await h.wait(0);
+  h.rename("Р");
+  h.sync.hide();
+  await h.wait(0);
+  assert.equal(server.posts().length, 2);
+  assert.equal(server.tree && Object.values(server.tree.people)[0].name, "Р");
+  assert.equal(h.sync.unsaved(), false);
+  h.sync.hide();
+  await h.wait(SAVE_DELAY);
+  assert.equal(server.posts().length, 2, "nothing pending: nothing goes");
+  assert.deepEqual(h.beacons, []);
+});
+
+test("a tree too big for the closing beacon makes the page ask before closing, while it is unsaved", async (t) => {
   const server = fakeServer({ tree: tree(2) });
   const h = harness(t, server);
   await h.mount();
   await h.wait(0);
   const id = Object.keys(h.state.tree.people)[0];
-  h.act({ type: "update", id, patch: { alt: [ "х".repeat(70000) ] }, quiet: true });
-  const before = server.log.length;
+  h.act({ type: "update", id, patch: { alt: ["х".repeat(70000)] }, quiet: true });
+  assert.equal(h.sync.fitsBeacon(h.state.tree), false);
+  assert.equal(h.sync.askOnClose(h.state.tree), true, "unsaved, and a beacon cannot carry it");
+  h.sync.hide(); // the person stays, the page goes out of sight: the write goes as an ordinary request
+  await h.wait(0);
+  assert.equal(server.posts().at(-1), "POST /api/tree 200");
+  assert.equal(h.sync.askOnClose(h.state.tree), false, "written: the tab closes without a question");
   h.sync.flush(h.state.tree);
-  assert.equal(h.beacons.length, 1);
-  assert.equal(h.beacons[0].sent, false);
-  assert.equal(server.log.length, before, "no other request goes instead");
-  assert.deepEqual(h.notices, []);
+  assert.deepEqual(h.beacons, []);
 });
 
-test("known issue: after a memory server restarts, the tab holds the only copy and cannot save it", async (t) => {
+test("after a memory server restarts empty, the tab writes its tree back at once and says so", async (t) => {
   const server = fakeServer({ store: "memory", tree: tree(2) });
   const h = harness(t, server);
   await h.mount();
@@ -368,12 +524,73 @@ test("known issue: after a memory server restarts, the tab holds the only copy a
   server.restart();
   h.rename("К");
   await h.wait(SAVE_DELAY);
-  assert.equal(server.posts().at(-1), "POST /api/tree 409");
-  await h.sync.reread(); // the server has nothing to give: the tab stays blocked
-  h.render();
-  assert.equal(h.where?.kind === "disk" && h.where.blocked, "conflict");
+  assert.deepEqual(server.posts().slice(1), ["POST /api/tree 409", "POST /api/tree 200"]);
+  assert.deepEqual(names(server.tree), names(h.state.tree), "the tab's tree is on the server again");
+  assert.deepEqual(h.notices, ["notice.restarted"]);
+  assert.equal(h.where?.kind === "disk" && h.where.blocked, null);
   h.rename("Ка");
-  await h.wait(SAVE_DELAY * 5);
-  assert.equal(server.posts().at(-1), "POST /api/tree 409");
+  await h.wait(SAVE_DELAY);
+  assert.equal(server.posts().at(-1), "POST /api/tree 200", "and writing goes on as ever");
+  assert.equal(server.tree && Object.values(server.tree.people)[0].name, "Ка");
+});
+
+test("when another tab got its tree back onto the restarted server first, it is an ordinary conflict", async (t) => {
+  const server = fakeServer({ store: "memory", tree: tree(2) });
+  const h = harness(t, server);
+  await h.mount();
+  await h.wait(0);
+  server.restart();
+  server.beforePost = [() => {}, () => server.edit(tree(4))];
+  h.rename("Л");
+  await h.wait(SAVE_DELAY);
+  assert.deepEqual(server.posts().slice(1), ["POST /api/tree 409", "POST /api/tree 409"]);
+  assert.equal(h.where?.kind === "disk" && h.where.blocked, "conflict");
+  assert.deepEqual(h.notices, ["notice.conflict"]);
+  assert.deepEqual(names(server.tree), names(tree(4)), "the other tab's tree stays");
+});
+
+test("a folder on disk that emptied is not written back: that is an ordinary conflict", async (t) => {
+  const server = fakeServer({ tree: tree(2) });
+  const h = harness(t, server);
+  await h.mount();
+  await h.wait(0);
+  server.restart(); // every file gone
+  h.rename("М");
+  await h.wait(SAVE_DELAY);
+  assert.deepEqual(server.posts().slice(1), ["POST /api/tree 409"]);
+  assert.equal(h.where?.kind === "disk" && h.where.blocked, "conflict");
+  assert.deepEqual(h.notices, ["notice.conflict"]);
   assert.equal(server.tree, null);
+});
+
+test("a tab blocked by a conflict gives its tree back on a reread when the memory server has restarted empty", async (t) => {
+  const server = fakeServer({ store: "memory", tree: tree(2) });
+  const h = harness(t, server);
+  await h.mount();
+  await h.wait(0);
+  server.edit(tree(4));
+  h.rename("Н");
+  await h.wait(SAVE_DELAY);
+  assert.equal(h.where?.kind === "disk" && h.where.blocked, "conflict");
+  server.restart();
+  await h.sync.reread();
+  h.render();
+  await h.wait(0);
+  assert.equal(server.posts().at(-1), "POST /api/tree 200");
+  assert.deepEqual(names(server.tree), names(h.state.tree), "the only copy left is on the server again");
+  assert.equal(Object.values(h.state.tree.people)[0].name, "Н", "and stays open");
+  assert.deepEqual(h.notices, ["notice.conflict", "notice.restarted"]);
+  assert.equal(h.where?.kind === "disk" && h.where.blocked, null);
+});
+
+test("a recheck of a server still in its old version keeps writing blocked", async (t) => {
+  const server = fakeServer({ tree: tree(2), stale: true });
+  const h = harness(t, server);
+  await h.mount();
+  await h.sync.reread();
+  h.render();
+  assert.equal(h.where?.kind === "disk" && h.where.blocked, "stale");
+  h.rename("О");
+  await h.wait(SAVE_DELAY * 5);
+  assert.deepEqual(server.posts(), []);
 });

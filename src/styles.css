@@ -950,6 +950,27 @@ svg#tree.picking {
     padding: 0 14px;
     font-size: 14px;
   }
+  /* writing is stopped: one row under the search says so and carries the way out,
+     short, since it stands in what the lowered sheet shows; the footer keeps the
+     longer wording */
+  .head-stuck {
+    flex: 0 0 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .head-stuck .where {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+  }
+  .head-stuck button {
+    flex: 0 0 auto;
+    padding: 0 12px;
+    font-size: 13px;
+  }
   /* The title, the intro and the onboarding hint give their room to the list: the
      tab and the home screen already carry the name, and by the time the tree is on
      screen the hint has done its job. */

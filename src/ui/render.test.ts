@@ -117,20 +117,33 @@ test("the footer for each place the tree can live", (t) => {
   t.assert.snapshot(Object.fromEntries(Object.entries(places).map(([k, w]) => [k, footer(draw(sidebar(w), s))])));
 });
 
-test("known issue: on a phone the save status and «Reread» live only at the foot of the sheet", (t) => {
+test("on a phone a tab that cannot save says so in the head of the sheet too, with the way out", (t) => {
   narrow = true;
   t.after(() => {
     narrow = false;
   });
   const s = small();
-  const panel = draw(sidebar({ ...DISK, blocked: "conflict" }), s);
-  const foot = panel.indexOf('<div class="rail-foot">');
-  const status = translate("ru", "where.conflict");
-  const reread = translate("ru", "where.reread");
-  assert.ok(foot > 0 && panel.indexOf(status) > foot && panel.indexOf(reread) > foot, "both are in the footer");
-  assert.equal(panel.split(status).length, 2, "and nowhere else in the panel");
-  const bar = draw(h(ui.Toolbar, { onFit: noop, onZoom: noop }), s);
-  assert.ok(!bar.includes(status) && !bar.includes(reread), "nor on the bar over the canvas");
+  const head = (html: string) => html.slice(html.indexOf('<div class="rail-head">'), html.indexOf('<div class="rail-scroll">'));
+  const foot = (html: string) => html.slice(html.indexOf('<div class="rail-foot">'));
+  const cases = [
+    ["conflict", "where.conflictShort", "where.reread"],
+    ["stale", "where.staleShort", "where.recheck"],
+  ] as const;
+  for (const [blocked, status, button] of cases) {
+    const panel = draw(sidebar({ ...DISK, blocked }), s);
+    assert.ok(head(panel).includes(translate("ru", status)), blocked + ": the status is in the head");
+    assert.ok(head(panel).includes(translate("ru", button)), blocked + ": and so is the button");
+    assert.ok(foot(panel).includes(translate("ru", "where." + blocked)), blocked + ": the footer keeps its status");
+    assert.ok(foot(panel).includes(translate("ru", button)), blocked + ": and its button");
+  }
+  assert.ok(!head(draw(sidebar(DISK), s)).includes('class="where'), "while it saves, the head is as it was");
+
+  narrow = false;
+  const desk = head(draw(sidebar({ ...DISK, blocked: "conflict" }), s));
+  assert.ok(!desk.includes('class="where') && !desk.includes(translate("ru", "where.reread")), "a desktop keeps it in the footer");
+
+  narrow = true;
+  t.assert.snapshot(head(draw(sidebar({ ...DISK, blocked: "conflict" }), s)));
 });
 
 test("the bar over the canvas, with and without hidden people", (t) => {

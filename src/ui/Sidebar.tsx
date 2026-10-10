@@ -72,6 +72,8 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
   );
 
   const selected = s.selected && people[s.selected] ? people[s.selected] : null;
+  /** why writing to the server is stopped, if it is */
+  const blocked = where?.kind === "disk" ? where.blocked : null;
   const hiddenSet = useMemo(() => new Set(s.tree.hidden), [s.tree.hidden]);
 
   // Built only when what it shows changes: dragging the sheet re-renders the panel on
@@ -182,6 +184,17 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
         <button className="primary add-big" onClick={onAdd} aria-label={narrow ? t("rail.add") : undefined}>
           {narrow ? t("rail.addShort") : t("rail.add")}
         </button>
+        {/* A lowered sheet shows nothing but its head, and the footer may be a long scroll
+            away: a tab that cannot save says so here too, with the way out next to it. */}
+        {narrow && blocked && (
+          <div className="head-stuck">
+            {/* not a <p>: the head of the sheet hides its paragraphs (the intro) on a phone */}
+            <div className="where stuck">{blocked === "stale" ? t("where.staleShort") : t("where.conflictShort")}</div>
+            <button className="primary" onClick={onReread}>
+              {blocked === "stale" ? t("where.recheck") : t("where.reread")}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="rail-scroll">

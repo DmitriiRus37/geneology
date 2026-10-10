@@ -27,6 +27,10 @@ const RU: Record<string, string> = {
   "notice.fileFailed": "Не получилось прочитать файл",
   "notice.zipLoaded": "Из архива загружено людей: {n}",
   "notice.zipFailed": "Архив не загрузился: {detail}",
+  "notice.saveFailed": "Не удалось сохранить — повторю через несколько секунд",
+  "notice.saved": "Сохранено",
+  "notice.restarted": "Сервер был перезапущен и пуст — древо из этой вкладки записано заново",
+  "notice.serverSilent": "Сервер не отвечает — правки сохраняются только в этом браузере",
   "confirm.delete": "Удалить «{name}» и все его связи?",
   "confirm.clear": "Убрать всех из древа — людей: {n}? Это увидят все, кто войдёт тем же паролем. Скачайте архив, если ещё не скачали.",
 
@@ -61,6 +65,8 @@ const RU: Record<string, string> = {
   "where.memory": "Древо живёт в памяти сервера. Скачайте архив: с перезапуском правки пропадут.",
   "where.recheck": "Проверить сервер заново",
   "where.reread": "Перечитать с диска",
+  "where.staleShort": "Сервер старой версии — правки не сохраняются",
+  "where.conflictShort": "Древо изменилось в другом месте — правки не сохраняются",
 
   "tool.timeline": "По годам",
   "tool.timelineTitle": "Ставить людей по году рождения",
@@ -220,6 +226,10 @@ const EN: Record<string, string> = {
   "notice.fileFailed": "Could not read the file",
   "notice.zipLoaded": "Loaded {n} people from the archive",
   "notice.zipFailed": "The archive did not load: {detail}",
+  "notice.saveFailed": "Could not save — trying again in a few seconds",
+  "notice.saved": "Saved",
+  "notice.restarted": "The server restarted empty — the tree from this tab was written back",
+  "notice.serverSilent": "The server does not answer — changes are kept in this browser only",
   "confirm.delete": "Delete “{name}” and all their links?",
   "confirm.clear": "Remove everyone from the tree — {n} people? Everyone who logs in with the same password will see this. Download the archive first if you have not.",
 
@@ -254,6 +264,8 @@ const EN: Record<string, string> = {
   "where.memory": "The tree lives in the server's memory. Download the archive: a restart loses your edits.",
   "where.recheck": "Check the server again",
   "where.reread": "Reload from disk",
+  "where.staleShort": "An older server — edits are not saved",
+  "where.conflictShort": "Changed elsewhere — edits are not saved",
 
   "tool.timeline": "By year",
   "tool.timelineTitle": "Place people by year of birth",

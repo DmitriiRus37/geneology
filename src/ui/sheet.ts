@@ -107,7 +107,14 @@ export function useSheet(narrow: boolean, onCover: (px: number) => void): Sheet 
     };
     apply();
     window.addEventListener("resize", apply);
-    return () => window.removeEventListener("resize", apply);
+    // The head grows with what it carries — a tab that cannot save says so there — and
+    // every stop is measured from it, so they follow it.
+    const watch = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);
+    if (head.current) watch?.observe(head.current);
+    return () => {
+      window.removeEventListener("resize", apply);
+      watch?.disconnect();
+    };
   }, [narrow, snap, stops]);
 
   useLayoutEffect(() => {

@@ -64,12 +64,34 @@ export function useSync(tree: TreeState, selected: string | null, d: Dispatch<Ac
   useEffect(() => sync.commit(tree, where, flushSeq));
   useEffect(() => () => sync.stop(), [sync]);
 
-  // the tab is being closed — we write out whatever did not get away in time
+  // The page went out of sight — another tab, another app, a locked phone. A phone may
+  // never bring it back, so a pending write goes out now, while the page can still wait
+  // for the answer.
+  useEffect(() => {
+    const hidden = () => {
+      if (document.visibilityState === "hidden") sync.hide();
+    };
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, [sync]);
+
+  // The tab is being closed — we write out whatever did not get away in time. A tree too
+  // big for the closing beacon would be lost without a word, so then the browser asks
+  // first ("changes may not be saved"), and the person can stay until it is written.
   useEffect(() => {
     if (where?.kind !== "disk" || where.blocked) return;
     const bye = () => sync.flush(treeRef.current);
+    const ask = (e: BeforeUnloadEvent) => {
+      if (!sync.askOnClose(treeRef.current)) return;
+      e.preventDefault();
+      e.returnValue = ""; // the older way to ask, still the only one some browsers heed
+    };
     window.addEventListener("pagehide", bye);
-    return () => window.removeEventListener("pagehide", bye);
+    window.addEventListener("beforeunload", ask);
+    return () => {
+      window.removeEventListener("pagehide", bye);
+      window.removeEventListener("beforeunload", ask);
+    };
   }, [where, sync]);
 
   return { where, reread: sync.reread, upload: sync.upload, download: sync.download };
