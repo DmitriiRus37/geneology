@@ -22,10 +22,18 @@ export interface Attempt {
   ua: string;
 }
 
-/** The address the request really came from: a proxy puts it in a header. */
-export const ipOf = (req: IncomingMessage): string => {
-  const fwd = String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
-  return (fwd || req.socket?.remoteAddress || "-").replace(/^::ffff:/, "");
+/** The longest textual form of an address (IPv6 with an IPv4 tail). */
+const IP_MAX = 45;
+
+/**
+ * The address the request came from. X-Forwarded-For is anybody's to write, so it is
+ * read only with `trustProxy` — and then only its rightmost entry, the one our own
+ * proxy appended; whatever stands left of it came from the client. Never longer than
+ * an address can be.
+ */
+export const ipOf = (req: IncomingMessage, trustProxy: boolean): string => {
+  const fwd = trustProxy ? (String(req.headers["x-forwarded-for"] ?? "").split(",").pop() ?? "").trim() : "";
+  return (fwd || req.socket?.remoteAddress || "-").replace(/^::ffff:/, "").slice(0, IP_MAX);
 };
 
 const asRow = (a: Attempt): string =>
@@ -36,6 +44,8 @@ export interface AttemptsOptions {
   max: number;
   /** logins.jsonl; "" keeps them in memory only */
   file: string;
+  /** take the address from X-Forwarded-For (see `ipOf`) */
+  trustProxy: boolean;
 }
 
 export interface Attempts {
@@ -46,7 +56,7 @@ export interface Attempts {
   record(req: IncomingMessage, name: unknown, role: string | null): void;
 }
 
-export function createAttempts({ max, file }: AttemptsOptions): Attempts {
+export function createAttempts({ max, file, trustProxy }: AttemptsOptions): Attempts {
   const list: Attempt[] = [];
   let rows = 0; // records in the file
 
@@ -89,7 +99,7 @@ export function createAttempts({ max, file }: AttemptsOptions): Attempts {
     const one: Attempt = {
       at: new Date().toISOString(),
       name: String(name ?? "").slice(0, 64),
-      ip: ipOf(req),
+      ip: ipOf(req, trustProxy),
       role: role ?? "",
       ua: String(req.headers["user-agent"] ?? "").slice(0, 160),
     };

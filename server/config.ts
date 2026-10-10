@@ -24,6 +24,12 @@ export interface Config {
   adminPass: string;
   /** how many sign-ins and attempts are kept */
   attemptsMax: number;
+  /**
+   * GENEALOGY_TRUST_PROXY=1: a proxy of our own stands in front and appends the client's
+   * address to X-Forwarded-For. Off by default — the port is published directly, and
+   * then the header is whatever the client chose to write into it.
+   */
+  trustProxy: boolean;
 }
 
 /** `root` is the repository: persons/ and dist/ are looked for there. */
@@ -55,5 +61,6 @@ export function readConfig(argv: string[], env: Record<string, string | undefine
     adminUser: env.GENEALOGY_ADMIN_USER ?? "",
     adminPass: env.GENEALOGY_ADMIN_PASS ?? "",
     attemptsMax: Number(env.GENEALOGY_ATTEMPTS ?? 10000),
+    trustProxy: env.GENEALOGY_TRUST_PROXY === "1",
   };
 }

@@ -92,22 +92,23 @@ test("the metrics reader and the server read a saved tree alike", () => {
   assert.deepEqual(canon(metrics), canon(server));
 });
 
-test("known issue: the metrics reader ignores _view.json", () => {
+test("the metrics reader reads _view.json: the hidden and the gap count", () => {
   const s = normalize(family);
   s.hidden = [Object.keys(s.people)[0]];
   s.gap = 2;
   const { metrics, server } = bothReaders(files(treeToCards(s)));
-  assert.deepEqual([server.hidden.length, server.gap], [1, 2]);
-  assert.deepEqual([metrics.hidden.length, metrics.gap], [0, 1]);
+  assert.deepEqual([metrics.hidden.length, metrics.gap], [1, 2]);
+  assert.deepEqual(canon(metrics), canon(server));
 });
 
-test("known issue: the metrics reader takes no id from the file name and no okId check", () => {
+test("the metrics reader takes ids from file names and checks them, as the server does", () => {
   const { metrics, server } = bothReaders([
     ["a.json", '{"name":"Анна"}'],
     ["b.json", '{"id":"b c","name":"Борис"}'],
+    ["c.json", '{"theme":"dark"}'],
   ]);
-  assert.deepEqual(Object.keys(server.people), ["a", "b"]);
-  assert.deepEqual(Object.keys(metrics.people).sort(), ["b c", "undefined"]);
+  assert.deepEqual(Object.keys(metrics.people), ["a", "b"]);
+  assert.deepEqual(canon(metrics), canon(server));
 });
 
 test("cardIdOf names exactly the people cardsToTree reads", () => {
@@ -119,9 +120,51 @@ test("cardIdOf names exactly the people cardsToTree reads", () => {
     ["f.json", '{"id":"g h"}'],
     ["_notes.json", '{"id":"n"}'],
     [VIEW, '{"hidden":[]}'],
+    // JSON that is no person's card: neither a string name nor a string id of its own
+    ["settings.json", '{"theme":"dark"}'],
+    ["list.json", '["a"]'],
+    ["nothing.json", "null"],
+    ["count.json", "7"],
+    ["text.json", '"a"'],
+    ["numbered.json", '{"id":7,"name":null}'],
+    // a string name or a string id is enough
+    ["k.json", '{"id":7,"name":"Кирилл"}'],
+    ["only-id.json", '{"id":"m"}'],
+    ["nameless.json", '{"name":""}'],
+    // names of Object.prototype members are no ids, in the file name or in the card
+    ["constructor.json", '{"name":"Иван"}'],
+    ["toString.json", '{"id":"__proto__"}'],
+    ["hasOwnProperty.json", '{"id":"valueOf","name":"Ольга"}'],
+    ["q.json", '{"id":"isPrototypeOf","name":"Пётр"}'],
   ];
   const read = Object.keys(cardsToTree(files, () => {})!.people).sort();
   const named = files.map(([n, t]) => cardIdOf(n, t)).filter((id) => id !== null).sort();
   assert.deepEqual(named, read);
-  assert.deepEqual(read, ["a", "b2", "f"]);
+  assert.deepEqual(read, ["a", "b2", "f", "k", "m", "nameless", "q"]);
+});
+
+test("okId refuses every name of an Object.prototype member", () => {
+  for (const name of Object.getOwnPropertyNames(Object.prototype)) {
+    const tree = cardsToTree([[name + ".json", JSON.stringify({ name: "Иван" })], ["p1.json", JSON.stringify({ id: name, name: "Анна" })]], assert.fail)!;
+    assert.deepEqual(Object.keys(tree.people), ["p1"], name);
+    assert.equal(cardIdOf(name + ".json", '{"name":"Иван"}'), null, name);
+  }
+});
+
+test("treeToCards drops ids named after Object.prototype members, and every link to them", () => {
+  const person = (name: string) => ({ name, sex: "u", n: 1 });
+  const set = treeToCards({
+    people: { p1: person("Иван Петрович Орлов"), toString: person("Пётр Иванович Орлов"), constructor: person("Анна Сергеевна Орлова") },
+    links: [
+      { parent: "p1", child: "toString" },
+      { parent: "constructor", child: "p1" },
+    ],
+    pairs: [{ a: "p1", b: "valueOf" }],
+    sibs: [{ a: "toString", b: "p1" }],
+    hidden: ["toString", "p1"],
+  });
+  assert.deepEqual(set.ids, ["p1"]);
+  const p1 = JSON.parse(set.cards[0][1]);
+  assert.deepEqual([p1.parents, p1.spouses, p1.siblings], [[], [], []]);
+  assert.deepEqual(JSON.parse(set.view).hidden, ["p1"]);
 });

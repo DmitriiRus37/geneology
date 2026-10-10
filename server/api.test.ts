@@ -32,6 +32,27 @@ const TREE = {
 
 const json = (dir: string, name: string) => JSON.parse(readFileSync(join(dir, name), "utf8"));
 
+/** The newest row of the sign-in log. */
+const lastRow = (srv: Running) => {
+  const lines = readFileSync(join(srv.logs, "logins.jsonl"), "utf8").trim().split("\n");
+  return JSON.parse(lines[lines.length - 1]);
+};
+
+/**
+ * The request-log line of the request sent with this user agent, split at spaces. It is
+ * written once the answer has gone out, so it may land a moment after the client has it.
+ */
+async function accessLine(srv: Running, ua: string): Promise<string[]> {
+  const file = join(srv.logs, "access.log");
+  const until = Date.now() + 5000;
+  for (;;) {
+    const line = (existsSync(file) ? readFileSync(file, "utf8") : "").split("\n").find((l) => l.endsWith('"' + ua + '"'));
+    if (line) return line.split(" ");
+    if (Date.now() > until) throw new Error("no request-log line for " + ua);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
 describe("an open server on a folder", () => {
   let srv: Running;
   before(async () => {
@@ -245,7 +266,11 @@ describe("a server in memory", () => {
 
   test("an archive with no person's card in it is refused and the tree stays", async () => {
     const before = (await getTree(srv.base)).body.tree.people;
-    const archives: Record<string, string>[] = [{ "persons/_view.json": '{"timeline":false,"gap":1,"hidden":[]}' }, { "persons/p9.json": "{ not json" }];
+    const archives: Record<string, string>[] = [
+      { "persons/_view.json": '{"timeline":false,"gap":1,"hidden":[]}' },
+      { "persons/p9.json": "{ not json" },
+      { "persons/settings.json": '{"theme":"dark"}' },
+    ];
     for (const files of archives) {
       const r = await fetch(srv.base + "/api/upload", { method: "POST", body: new Uint8Array(zip(files)) });
       assert.equal(r.status, 400);
@@ -358,20 +383,41 @@ describe("the sign-in log and the address a client claims", () => {
   });
   after(() => srv.stop());
 
-  const lastRow = () => {
-    const lines = readFileSync(join(srv.logs, "logins.jsonl"), "utf8").trim().split("\n");
-    return JSON.parse(lines[lines.length - 1]);
-  };
-
-  test("known issue SRV-6: X-Forwarded-For from any client is taken as the address", async () => {
+  test("X-Forwarded-For is ignored: the address is the connection's", async () => {
     await login(srv.base, "anna", "wrong", { "x-forwarded-for": "10.9.8.7" });
-    assert.equal(lastRow().address, "10.9.8.7");
+    assert.equal(lastRow(srv).address, "127.0.0.1");
+    await login(srv.base, "anna", "wrong", { "x-forwarded-for": "1".repeat(4000) });
+    assert.equal(lastRow(srv).address, "127.0.0.1");
   });
 
-  test("known issue ARC-V1: an overlong X-Forwarded-For is stored uncut", async () => {
-    const long = "1".repeat(4000);
-    await login(srv.base, "anna", "wrong", { "x-forwarded-for": long });
-    assert.equal(lastRow().address, long);
+  test("the request log ignores X-Forwarded-For too", async () => {
+    await fetch(srv.base + "/api/health", { headers: { "x-forwarded-for": "10.9.8.7", "user-agent": "probe-untrusted" } });
+    assert.equal((await accessLine(srv, "probe-untrusted"))[1], "127.0.0.1");
+  });
+});
+
+describe("behind a proxy of our own (GENEALOGY_TRUST_PROXY=1)", () => {
+  let srv: Running;
+  before(async () => {
+    srv = await startServer({ store: "memory", user: ["anna", "secret-one"], logs: true, env: { GENEALOGY_TRUST_PROXY: "1" } });
+  });
+  after(() => srv.stop());
+
+  test("the address is the rightmost X-Forwarded-For entry, not what the client wrote before it", async () => {
+    await login(srv.base, "anna", "wrong", { "x-forwarded-for": "10.9.8.7, 203.0.113.5" });
+    assert.equal(lastRow(srv).address, "203.0.113.5");
+    await fetch(srv.base + "/api/health", { headers: { "x-forwarded-for": "10.9.8.7, 203.0.113.5", "user-agent": "probe-trusted" } });
+    assert.equal((await accessLine(srv, "probe-trusted"))[1], "203.0.113.5", "the request log takes the same entry");
+  });
+
+  test("an overlong address is cut to 45 characters", async () => {
+    await login(srv.base, "anna", "wrong", { "x-forwarded-for": "10.9.8.7, " + "1".repeat(4000) });
+    assert.equal(lastRow(srv).address, "1".repeat(45));
+  });
+
+  test("without the header the address is the connection's", async () => {
+    await login(srv.base, "anna", "wrong");
+    assert.equal(lastRow(srv).address, "127.0.0.1");
   });
 });
 
@@ -406,35 +452,73 @@ describe("edge cases of the stores", () => {
     }
   });
 
-  test("known issue SRV-5: one card with parents set to null fails the whole read", async () => {
+  test("link lists that are not arrays read as empty, and the rest of the tree reads", async () => {
     const srv = await startServer({
       store: "disk",
-      files: { "p1.json": card("p1", "Иван Петрович Орлов"), "p2.json": card("p2", "Анна Сергеевна Орлова", { parents: null }) },
+      files: {
+        "a.json": card("a", "Иван Петрович Орлов"),
+        "p1.json": card("p1", "Анна Сергеевна Орлова", { parents: null }),
+        // a string is not walked letter by letter: "a" is somebody's id here
+        "p2.json": card("p2", "Пётр Иванович Орлов", { parents: "a", spouses: { a: "a" }, siblings: 7 }),
+      },
     });
     try {
-      assert.equal((await getTree(srv.base)).status, 500);
+      const { status, body } = await getTree(srv.base);
+      assert.equal(status, 200);
+      assert.deepEqual(Object.keys(body.tree.people).sort(), ["a", "p1", "p2"]);
+      assert.equal(body.tree.people.p1.name, "Анна Сергеевна Орлова", "the card's person is still there");
+      assert.equal("parents" in body.tree.people.p1, false);
+      assert.deepEqual([body.tree.links, body.tree.pairs, body.tree.sibs], [[], [], []]);
     } finally {
       await srv.stop();
     }
   });
 
-  test("known issue ARC-V2: another JSON file whose name passes as an id is taken for a card and rewritten", async () => {
+  test("JSON that is no person's card is not read, not rewritten and not deleted", async () => {
+    const others: Record<string, string> = {
+      "settings.json": '{"theme":"dark"}\n',
+      "list.json": '["p1"]\n',
+      "nothing.json": "null\n",
+      "count.json": "7\n",
+      "numbered.json": '{"id":7,"name":null}\n',
+      "genealogy (1).json": "{}\n",
+    };
+    const srv = await startServer({ store: "disk", files: { "p1.json": card("p1", "Иван Петрович Орлов"), ...others } });
+    try {
+      const { body } = await getTree(srv.base);
+      assert.deepEqual(Object.keys(body.tree.people), ["p1"]);
+      const out = await postTree(srv.base, body.rev, body.tree);
+      assert.equal(out.status, 200);
+      assert.equal(out.body.removed, 0);
+      for (const [name, text] of Object.entries(others)) assert.equal(readFileSync(join(srv.dir, name), "utf8"), text, name + " is left as it was");
+    } finally {
+      await srv.stop();
+    }
+  });
+
+  test("ids named after Object.prototype members are nobody's: skipped on read, never deleted", async () => {
+    const others: Record<string, string> = {
+      "constructor.json": card("constructor", "Иван Петрович Орлов"),
+      "toString.json": '{"name":"Анна Сергеевна Орлова"}\n',
+      "hasOwnProperty.json": card("hasOwnProperty", "Вера Николаевна Белкина"),
+    };
     const srv = await startServer({
       store: "disk",
       files: {
-        "p1.json": card("p1", "Иван Петрович Орлов"),
-        "settings.json": '{"theme":"dark"}\n',
-        "genealogy (1).json": "{}\n",
+        ...others,
+        "p1.json": card("p1", "Пётр Иванович Орлов", { parents: ["constructor"], spouses: ["toString"] }),
+        // an id like that inside the card falls back to the file name, as any unusable id does
+        "p2.json": card("p2", "Мария Петровна Орлова", { id: "__proto__" }),
       },
     });
     try {
-      const { body } = await getTree(srv.base);
-      assert.deepEqual(Object.keys(body.tree.people).sort(), ["p1", "settings"], "a file whose name passes as an id becomes a person");
-      await postTree(srv.base, body.rev, body.tree);
-      const settings = json(srv.dir, "settings.json");
-      assert.equal(settings.id, "settings");
-      assert.equal("theme" in settings, false, "its own content is gone");
-      assert.equal(existsSync(join(srv.dir, "genealogy (1).json")), true, "a file that is nobody's card is left alone");
+      const { status, body } = await getTree(srv.base);
+      assert.equal(status, 200);
+      assert.deepEqual(Object.keys(body.tree.people).sort(), ["p1", "p2"]);
+      assert.deepEqual([body.tree.links, body.tree.pairs], [[], []]);
+      const out = await postTree(srv.base, body.rev, body.tree);
+      assert.equal(out.body.removed, 0);
+      for (const [name, text] of Object.entries(others)) assert.equal(readFileSync(join(srv.dir, name), "utf8"), text, name + " is left as it was");
     } finally {
       await srv.stop();
     }

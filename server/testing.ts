@@ -25,6 +25,8 @@ export interface ServerOptions {
   logs?: boolean;
   /** files to put into the persons folder before the server starts */
   files?: Record<string, string>;
+  /** more environment, set after the developer's own GENEALOGY_* and LOG_* are cleared */
+  env?: Record<string, string>;
 }
 
 export interface Running {
@@ -68,6 +70,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<Running> {
   if (opts.user) [env.GENEALOGY_USER, env.GENEALOGY_PASS] = opts.user;
   if (opts.admin) [env.GENEALOGY_ADMIN_USER, env.GENEALOGY_ADMIN_PASS] = opts.admin;
   if (logs) env.LOG_DIR = logs;
+  Object.assign(env, opts.env);
 
   const port = await freePort();
   const args = ["--port", String(port), "--host", "127.0.0.1", "--store", opts.store ?? "disk", "--dir", dir];

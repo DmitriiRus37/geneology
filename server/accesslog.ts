@@ -22,6 +22,8 @@ export interface AccessLogOptions {
   max: number;
   /** gzipped files kept */
   keep: number;
+  /** take the address from X-Forwarded-For (see `ipOf`) */
+  trustProxy: boolean;
 }
 
 export type AccessLog = (req: IncomingMessage, res: ServerResponse, started: number) => void;
@@ -29,7 +31,7 @@ export type AccessLog = (req: IncomingMessage, res: ServerResponse, started: num
 /** Trim anything that could break the line apart. */
 const clean = (v: unknown, max: number): string => String(v ?? "-").replace(/[\r\n\t]+/g, " ").slice(0, max) || "-";
 
-export function createAccessLog({ file, max, keep }: AccessLogOptions): AccessLog {
+export function createAccessLog({ file, max, keep, trustProxy }: AccessLogOptions): AccessLog {
   let logged = 0; // bytes in the live file
 
   if (file) {
@@ -74,7 +76,7 @@ export function createAccessLog({ file, max, keep }: AccessLogOptions): AccessLo
     const line =
       [
         new Date().toISOString(),
-        clean(ipOf(req), 45),
+        clean(ipOf(req, trustProxy), 45),
         clean(req.method, 8),
         clean(String(req.url ?? "").split("?")[0], 200), // path only
         res.statusCode,

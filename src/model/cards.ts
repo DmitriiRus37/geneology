@@ -10,8 +10,13 @@
 /** Canvas settings; does not look like a person, hence the underscore. */
 export const VIEW = "_view.json";
 
-/** An id ends up in a file name, so only harmless ones get through. */
-export const okId = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v);
+/**
+ * An id ends up in a file name and as a key of plain objects, so only harmless ones get
+ * through: none of the names every object already answers to (`constructor`,
+ * `toString`, `__proto__` and the rest of `Object.prototype`).
+ */
+export const okId = (v: unknown): v is string =>
+  typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) && !Object.hasOwn(Object.prototype, v);
 
 /** The file a person's card is kept in. */
 export const cardName = (id: string): string => id + ".json";
@@ -60,6 +65,26 @@ export interface WireTree {
   seq: number;
 }
 
+/** A link list of a card; anything but an array holds no links. */
+const listOf = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+/**
+ * A person's card is an object with a name or an id of its own. Any other JSON that
+ * happens to lie in the store (settings, an export of something else) is nobody's card.
+ */
+const isCard = (raw: unknown): raw is Record<string, unknown> =>
+  typeof raw === "object" &&
+  raw !== null &&
+  !Array.isArray(raw) &&
+  (typeof (raw as Record<string, unknown>).name === "string" || typeof (raw as Record<string, unknown>).id === "string");
+
+/** The person a parsed file of the store stands for, or null when it is no person's card. */
+function idOf(name: string, raw: unknown): string | null {
+  if (name === VIEW || name.startsWith("_") || !isCard(raw)) return null;
+  const id = okId(raw.id) ? raw.id : name.slice(0, -5);
+  return okId(id) ? id : null;
+}
+
 /** A mutual link is written in both cards — it reaches the tree once. */
 function collect(others: unknown[], id: string, kind: string, seen: Set<string>, out: WirePair[]): void {
   for (const b of others) {
@@ -73,8 +98,10 @@ function collect(others: unknown[], id: string, kind: string, seen: Set<string>,
 
 /**
  * Cards to the tree. `files` is every `.json` in the store, name -> text; a file that
- * does not parse is reported through `warn` and skipped. Null when the store is empty:
- * the app will seed it itself.
+ * does not parse is reported through `warn` and skipped, one that parses but is no
+ * person's card (see `isCard`) or has no usable id is skipped silently. A link list
+ * that is not an array counts as empty. Null when the store is empty: the app will
+ * seed it itself.
  */
 export function cardsToTree(files: [name: string, text: string][] | null, warn: (line: string) => void): WireTree | null {
   if (!files) return null;
@@ -98,15 +125,14 @@ export function cardsToTree(files: [name: string, text: string][] | null, warn: 
       view = raw || {};
       continue;
     }
-    if (name.startsWith("_")) continue;
-    const id = okId(raw?.id) ? raw.id : name.slice(0, -5);
-    if (!okId(id)) continue;
-    const { parents = [], spouses = [], siblings = [], ...person } = raw || {};
+    const id = idOf(name, raw);
+    if (id === null) continue;
+    const { parents, spouses, siblings, ...person } = raw;
     people[id] = { ...person, id };
-    for (const p of parents) if (okId(p)) links.push({ parent: p, child: id });
+    for (const p of listOf(parents)) if (okId(p)) links.push({ parent: p, child: id });
     // a marriage and an explicit kinship are written in both cards — take each pair once
-    collect(spouses, id, "sp", seen, pairs);
-    collect(siblings, id, "sib", seen, sibs);
+    collect(listOf(spouses), id, "sp", seen, pairs);
+    collect(listOf(siblings), id, "sib", seen, sibs);
   }
 
   // links to people who disappeared are dropped silently
@@ -125,19 +151,19 @@ export function cardsToTree(files: [name: string, text: string][] | null, warn: 
 
 /**
  * The id a file of the store stands for, read the way `cardsToTree` reads it; null when
- * the file is no person's card — the view, a file that does not parse, or one with no
- * usable id. A file like that was never shown to anybody, so nothing may delete it.
+ * the file is no person's card — the view, a file that does not parse, JSON that is not
+ * a card, or a card with no usable id. A file like that was never shown to anybody, so
+ * nothing may delete it.
  */
 export function cardIdOf(name: string, text: string): string | null {
   if (name === VIEW || name.startsWith("_")) return null;
-  let raw: any;
+  let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
     return null;
   }
-  const id = okId(raw?.id) ? raw.id : name.slice(0, -5);
-  return okId(id) ? id : null;
+  return idOf(name, raw);
 }
 
 /** What a save writes: every card in the order of the people, then the view. */
@@ -154,6 +180,8 @@ export interface CardSet {
 export function treeToCards(tree: any): CardSet {
   const people = tree?.people && typeof tree.people === "object" ? tree.people : {};
   const ids = Object.keys(people).filter(okId);
+  // who is there is asked of this set, never of `parents[id]`: any object answers to `toString`
+  const known = new Set<unknown>(ids);
 
   const blank = (): Record<string, string[]> => Object.fromEntries(ids.map((id) => [id, []]));
   const parents = blank();
@@ -163,14 +191,14 @@ export function treeToCards(tree: any): CardSet {
   /** A mutual link is written into both cards — otherwise half of it is lost. */
   const both = (list: any, into: Record<string, string[]>) => {
     for (const p of list || []) {
-      if (!people[p.a] || !people[p.b] || !into[p.a] || !into[p.b]) continue;
+      if (!known.has(p.a) || !known.has(p.b)) continue;
       if (!into[p.a].includes(p.b)) into[p.a].push(p.b);
       if (!into[p.b].includes(p.a)) into[p.b].push(p.a);
     }
   };
 
   for (const l of tree.links || []) {
-    if (parents[l.child] && people[l.parent] && !parents[l.child].includes(l.parent)) {
+    if (known.has(l.child) && known.has(l.parent) && !parents[l.child].includes(l.parent)) {
       parents[l.child].push(l.parent);
     }
   }
@@ -200,7 +228,7 @@ export function treeToCards(tree: any): CardSet {
     cards.push([cardName(id), JSON.stringify(doc, null, 2) + "\n"]);
   }
 
-  const hidden = Array.isArray(tree.hidden) ? tree.hidden.filter((id: unknown) => okId(id) && people[id]) : [];
+  const hidden = Array.isArray(tree.hidden) ? tree.hidden.filter((id: unknown) => known.has(id)) : [];
   const view: ViewCard = { timeline: !!tree.timeline, gap: tree.gap ?? 1, hidden };
   return { ids, cards, view: JSON.stringify(view, null, 2) + "\n" };
 }

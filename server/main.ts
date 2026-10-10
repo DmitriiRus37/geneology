@@ -25,6 +25,10 @@
  * one that may open /admin and read who has been signing in. Without them the
  * page exists for nobody. The administrator lands on it straight after signing
  * in, and can still open the tree.
+ *
+ * The logs record the address the connection came from. Only behind a proxy of your
+ * own does GENEALOGY_TRUST_PROXY=1 make sense: the address is then the last entry of
+ * X-Forwarded-For, the one that proxy appended.
  */
 import { mkdirSync } from "node:fs";
 import { createServer } from "node:http";
@@ -43,9 +47,9 @@ const { host, port, logDir, logFile, logMax, logKeep } = config;
 if (logDir) mkdirSync(logDir, { recursive: true });
 
 const auth = createAuth(config);
-const attempts = createAttempts({ max: config.attemptsMax, file: config.loginsFile });
+const attempts = createAttempts({ max: config.attemptsMax, file: config.loginsFile, trustProxy: config.trustProxy });
 attempts.load();
-const accessLog = createAccessLog({ file: logFile, max: logMax, keep: logKeep });
+const accessLog = createAccessLog({ file: logFile, max: logMax, keep: logKeep, trustProxy: config.trustProxy });
 const store = config.mode === "memory" ? memStore() : diskStore(config.persons);
 
 const server = createServer(

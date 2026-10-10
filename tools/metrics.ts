@@ -16,41 +16,22 @@ import { edgeStats } from "../src/layout/crossings.ts";
 import { computeEdges } from "../src/layout/edges.ts";
 import { bboxOf, layout, rectOf } from "../src/layout/layout.ts";
 import type { Pt, Rect } from "../src/layout/route.ts";
-import type { Card } from "../src/model/cards.ts";
+import { cardsToTree } from "../src/model/cards.ts";
 import { normalize } from "../src/model/tree.ts";
-import { pairKey, type Pair, type TreeState } from "../src/model/types.ts";
+import type { TreeState } from "../src/model/types.ts";
 import { nodeCards } from "../src/testing/cards.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * The tree from the persons/ folder, close to the way the server reads it but not the
- * same: no `okId`, no id from the file name, `_view.json` is ignored.
+ * The tree from a persons/ folder, read exactly the way the server's disk store reads
+ * it: every `.json` by name, through `cardsToTree`, then `normalize` as the app does —
+ * so `_view.json` (the hidden, the gap) and the ids taken from file names count.
  */
 export function fromFolder(dir: string): TreeState {
-  const people: Record<string, unknown> = {};
-  const links: { parent: string; child: string }[] = [];
-  const pairs: Pair[] = [];
-  const sibs: Pair[] = [];
-  const seen = new Set<string>();
-  /** A mutual link is recorded in both cards — it reaches the tree once. */
-  const collect = (others: string[], id: string, kind: string, out: Pair[]) => {
-    for (const b of others) {
-      const key = kind + "|" + pairKey(id, b);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ a: id, b });
-    }
-  };
-  for (const n of readdirSync(dir)) {
-    if (!n.endsWith(".json") || n.startsWith("_")) continue;
-    const { parents = [], spouses = [], siblings = [], ...p } = JSON.parse(readFileSync(join(dir, n), "utf8")) as Card;
-    people[p.id] = p;
-    for (const q of parents) links.push({ parent: q, child: p.id });
-    collect(spouses, p.id, "sp", pairs);
-    collect(siblings, p.id, "sib", sibs);
-  }
-  return normalize({ people, links, pairs, sibs });
+  const names = readdirSync(dir).filter((n) => n.endsWith(".json")).sort();
+  const files = names.map((n): [string, string] => [n, readFileSync(join(dir, n), "utf8")]);
+  return normalize(cardsToTree(files, console.warn));
 }
 
 const arg = process.argv[2];
