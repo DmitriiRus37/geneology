@@ -237,12 +237,18 @@ export function createGestures(host: GestureHost): Gestures {
       dropLift();
     },
 
+    // A second finger is the pinch. A hold is called off and a pan stops; a card being
+    // carried is let go the way a system cancel lets it go: back to its place, unsaved.
     touchStart(touches) {
       if (touches.length !== 2) return;
       if (press) press.cancel();
       press = null;
-      drag = null;
       panning = null;
+      if (drag) {
+        drag = null;
+        host.dragEnd();
+      }
+      dropLift();
       pinch = { d: dist(touches), k: host.scale() };
     },
 

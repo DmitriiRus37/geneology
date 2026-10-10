@@ -153,7 +153,7 @@ test("a mouse drags a card at once, opens a line's menu at once, and 2 px of wob
   assert.deepEqual(r.calls, ["drag p1 110,50", "pin p1 110,50", "dragEnd", "openEdge", "pan 2,0"]);
 });
 
-test("known issue: a second finger while a card is carried leaves it drawn where it was, unsaved", (t) => {
+test("a second finger while a card is carried puts the card back unsaved, then pinches", (t) => {
   const r = rig(t);
   r.down(10, 10, { node: CARD });
   r.wait(HOLD);
@@ -162,7 +162,57 @@ test("known issue: a second finger while a card is carried leaves it drawn where
     { x: 50, y: 10 },
     { x: 90, y: 10 },
   ]);
+  assert.deepEqual(r.calls, ["lift p1", "drag p1 140,50", "dragEnd", "unlift"], "back to its place, outline gone, nothing pinned");
+  r.calls.length = 0;
+  assert.equal(
+    r.g.touchMove(
+      [
+        { x: 30, y: 10 },
+        { x: 110, y: 10 },
+      ],
+      () => ({ x: 0, y: 0 }),
+    ),
+    true,
+  );
+  r.move(30, 10);
   r.g.touchEnd();
   r.up();
-  assert.deepEqual(r.calls, ["lift p1", "drag p1 140,50", "unlift"], "no pin, and no dragEnd to clear where it is drawn");
+  assert.deepEqual(r.calls, ["zoom 2.00"], "the pinch zooms; the first finger moves and lets go of nothing");
+});
+
+test("a second finger while a card is held but not yet moved puts it back and selects nothing", (t) => {
+  const r = rig(t);
+  r.down(10, 10, { node: CARD });
+  r.wait(HOLD);
+  r.g.touchStart([
+    { x: 10, y: 10 },
+    { x: 60, y: 10 },
+  ]);
+  r.g.touchEnd();
+  r.up();
+  assert.deepEqual(r.calls, ["lift p1", "dragEnd", "unlift"]);
+});
+
+test("a second finger during a pan stops the pan and pinches; letting go selects nothing", (t) => {
+  const r = rig(t, { selected: "p1" });
+  r.down(10, 10);
+  r.move(40, 10);
+  r.g.touchStart([
+    { x: 40, y: 10 },
+    { x: 90, y: 10 },
+  ]);
+  r.move(60, 10);
+  assert.equal(
+    r.g.touchMove(
+      [
+        { x: 15, y: 10 },
+        { x: 115, y: 10 },
+      ],
+      () => ({ x: 0, y: 0 }),
+    ),
+    true,
+  );
+  r.g.touchEnd();
+  r.up();
+  assert.deepEqual(r.calls, ["pan 30,0", "zoom 2.00"]);
 });

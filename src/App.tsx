@@ -8,7 +8,7 @@ import { normalize } from "./model/tree.ts";
 import { Board, type BoardHandle } from "./ui/Board.tsx";
 import { cardsFor } from "./ui/cards.ts";
 import { AppCtx } from "./ui/ctx.ts";
-import { keyCommand } from "./ui/keys.ts";
+import { isField, keyCommand } from "./ui/keys.ts";
 import { Sidebar } from "./ui/Sidebar.tsx";
 import { useSync } from "./ui/useSync.ts";
 
@@ -43,7 +43,13 @@ export function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const cmd = keyCommand(e, { picking: !!pick, selected: s.selected, onPage: document.activeElement === document.body });
+      const focus = document.activeElement;
+      const cmd = keyCommand(e, {
+        picking: !!pick,
+        selected: s.selected,
+        onPage: focus === document.body,
+        typing: isField(focus),
+      });
       if (cmd === "undo") {
         e.preventDefault();
         d({ type: "undo" });
