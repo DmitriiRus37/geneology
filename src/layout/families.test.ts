@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { normalize } from "../model/tree.ts";
 import { graphOf, lineFamilies, unions } from "./families.ts";
 
-test("known issue: the lines group a family in link order and keep a doubled link, the layout by birth and once", () => {
+test("a link written twice is one parent for the lines and the layout alike; the lines keep link order, the layout birth order", () => {
   const s = normalize({
     people: {
       a: { name: "Анна", sex: "f" },
@@ -26,8 +26,7 @@ test("known issue: the lines group a family in link order and keep a doubled lin
   ]);
 
   assert.deepEqual(lineFamilies(s, s.people), {
-    a: { parents: ["a"], children: ["young"] },
-    "a|a": { parents: ["a", "a"], children: ["old"] },
+    a: { parents: ["a"], children: ["young", "old"] },
     "a|b": { parents: ["a", "b"], children: [] },
   });
 });

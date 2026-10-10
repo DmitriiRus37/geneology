@@ -15,6 +15,52 @@ export interface Timeline {
   year: Record<string, number>;
 }
 
+/** A parent is at least this many years older than their child, as far as a guess is concerned. */
+const PARENT_AGE = 16;
+
+/**
+ * The years a birth date on the card allows: one for an exact year, ten for "197?",
+ * a hundred for "19??" (the year itself stands in the middle of them).
+ */
+function bornRange(born: string | undefined, y: number): [number, number] {
+  const m = isApproxYear(born) ? String(born).match(/(?:^|\D)(\d{2,3})(\?{1,2})(?:\D|$)/) : null;
+  if (!m || m[1].length + m[2].length !== 4) return [y, y];
+  const unit = 10 ** m[2].length;
+  return [+m[1] * unit, +m[1] * unit + unit - 1];
+}
+
+/**
+ * Each guess listens to one relative at a time: the death year less sixty, or a
+ * spouse's year; and "19??" on a card is read as 1950. Such a year could put a
+ * parent after their own child (someone who died at forty-six "born" in their
+ * child's year) or a child before both of its parents. The child then stood level
+ * with the parent or above, and no line from the one to the other could keep off the
+ * cards. A year that is not exact is kept inside the window its parents and children
+ * leave it, as far as its own range allows (`range`: a guess may go anywhere, a
+ * rough year from the card only within its decade or century, an exact one nowhere);
+ * when the kin leave no window at all, a guess goes halfway between them.
+ */
+function keepYearsInOrder(ids: string[], g: Graph, yr: Record<string, number>, range: Record<string, [number, number]>): void {
+  for (let pass = 0; pass < 10; pass++) {
+    let moved = false;
+    for (const id of ids) {
+      const [a, b] = range[id] ?? [-Infinity, Infinity];
+      if (a === b) continue;
+      let lo = -Infinity;
+      let hi = Infinity;
+      for (const p of g.parents[id]) if (yr[p] !== undefined) lo = Math.max(lo, yr[p] + PARENT_AGE);
+      for (const c of g.children[id]) if (yr[c] !== undefined) hi = Math.min(hi, yr[c] - PARENT_AGE);
+      let y = lo <= hi ? Math.min(Math.max(yr[id], lo), hi) : Math.round((lo + hi) / 2);
+      y = Math.min(Math.max(y, a), b);
+      if (y !== yr[id]) {
+        yr[id] = y;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+}
+
 /**
  * The vertical axis by year of birth instead of by generation. Missing years are
  * pulled from the children, the parents, the siblings and the spouse, and marked as
@@ -32,11 +78,14 @@ export function applyTimeline(
 
   const yr: Record<string, number> = {};
   const est: Record<string, 1> = {};
+  /** the years a date on the card allows: a guess has no entry here */
+  const range: Record<string, [number, number]> = {};
 
   for (const id of ids) {
     const y = yearOfBirth(state.people[id]);
     if (y) {
       yr[id] = y;
+      range[id] = bornRange(state.people[id].born, y);
       if (isApproxYear(state.people[id].born)) est[id] = 1; // "197?" — the year is known only roughly
     }
   }
@@ -122,6 +171,7 @@ export function applyTimeline(
       est[id] = 1;
     }
   }
+  keepYearsInOrder(ids, g, yr, range);
 
   let minYr = Infinity;
   let maxYr = -Infinity;
@@ -204,22 +254,27 @@ export function applyTimeline(
      * full gap was what left an only child sitting a couple of dozen pixels beside
      * its parents with fifty pixels of clear air on either side.
      */
-    const crowded = (id: string, room: number): boolean =>
+    const sameHeight = (A: Box, B: Box): boolean => !(B.y + B.h + 8 <= A.y || A.y + A.h + 8 <= B.y);
+    const crowded = (id: string, room: number, along: string[] = []): boolean =>
       ids.some((other) => {
-        if (other === id) return false;
+        if (other === id || along.includes(other)) return false;
         const A = pos[id];
         const B = pos[other];
-        if (B.y + B.h + 8 <= A.y || A.y + A.h + 8 <= B.y) return false;
+        if (!sameHeight(A, B)) return false;
         return Math.abs(A.x - B.x) < room - 0.5;
       });
 
     // the same fraction of the gap this file already treats as "close enough to matter"
     const snug = NODE_W + Math.max(20, gaps.h * 0.4);
 
-    /** Move `id` as far towards `to` as it can go without crowding anyone. */
-    const easeTo = (id: string, to: number, room: number): boolean => {
-      const was = pos[id].x;
-      const dx = to - was;
+    /**
+     * Move `id` as far towards `to` as it can go without crowding anyone; `along`
+     * move with it by the same step, and must not crowd anyone either.
+     */
+    const easeTo = (id: string, to: number, room: number, along: string[] = []): boolean => {
+      const block = [id, ...along];
+      const was = block.map((b) => pos[b].x);
+      const dx = to - was[0];
       if (Math.abs(dx) < 1) return false;
       // The step used to be all or nothing: a card that could not come back the
       // whole way stayed exactly where the spreading had left it, and an only
@@ -227,11 +282,11 @@ export function applyTimeline(
       // a few times finds the longest part of the way that is actually free.
       let step = Math.min(Math.abs(dx), 60);
       for (let tries = 0; tries < 7 && step >= 0.5; tries++) {
-        pos[id].x = was + Math.sign(dx) * step;
-        if (!crowded(id, room)) return true;
+        block.forEach((b, i) => (pos[b].x = was[i] + Math.sign(dx) * step));
+        if (!block.some((b) => crowded(b, room, block))) return true;
         step /= 2;
       }
-      pos[id].x = was;
+      block.forEach((b, i) => (pos[b].x = was[i]));
       return false;
     };
 
@@ -247,14 +302,32 @@ export function applyTimeline(
     // one the years allowed would land in its own spouse's column), but an only
     // child has nobody to collide with by definition. Parents first: a child
     // aimed at a middle that is still about to move would only have to move again.
+    //
+    // When the child's own spouse stands in the way, the two go together: the
+    // spreading pushes a couple aside as a whole, and the child alone could only
+    // come back as far as the spouse let it. A spouse who is an only child standing
+    // under parents of their own stays put.
+    const onlyMid = (kid: string): number | null => {
+      const ps = (g.parents[kid] ?? []).filter((p) => pos[p]);
+      if (!ps.length) return null;
+      if (ps.some((p) => (g.children[p] ?? []).some((c) => c !== kid && pos[c]))) return null; // not an only child
+      return ps.reduce((n, p) => n + pos[p].x, 0) / ps.length;
+    };
     for (let round = 0; round < 3; round++) {
       let moved = false;
       for (const kid of ids) {
-        const ps = (g.parents[kid] ?? []).filter((p) => pos[p]);
-        if (!ps.length) continue;
-        if (ps.some((p) => (g.children[p] ?? []).some((c) => c !== kid && pos[c]))) continue; // not an only child
-        const mid = ps.reduce((n, p) => n + pos[p].x, 0) / ps.length;
+        const mid = onlyMid(kid);
+        if (mid === null) continue;
         if (easeTo(kid, mid, snug)) moved = true;
+        if (Math.abs(pos[kid].x - mid) < 1) continue;
+        const beside = spouses(kid).filter(
+          (sp) => pos[sp] && sameHeight(pos[kid], pos[sp]) && Math.abs(pos[sp].x - pos[kid].x) < need + 1,
+        );
+        const settled = beside.some((sp) => {
+          const m = onlyMid(sp);
+          return m !== null && Math.abs(pos[sp].x - m) < 1;
+        });
+        if (beside.length && !settled && easeTo(kid, mid, snug, beside)) moved = true;
       }
       if (!moved) break;
     }

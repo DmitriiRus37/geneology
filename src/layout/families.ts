@@ -3,8 +3,9 @@
  * tree and the families. There are two groupings of families. `unions` is the
  * layout's: children in birth order, a childless marriage is a family too, and it
  * knows who stands tight together. `lineFamilies` is what the lines are drawn from:
- * children in link order, over the cards actually shown. They differ for
- * historical reasons rather than by design, and a test pins exactly how.
+ * children in link order, over the cards actually shown. Both take each parent
+ * once per child however many times the link was written; the child order is the
+ * one difference, and a test pins it.
  */
 import { birthKey } from "../model/dates.ts";
 import { pairKey, type TreeState } from "../model/types.ts";
@@ -138,8 +139,9 @@ export interface LineFamily {
 
 /**
  * The families the lines are drawn for, by key: the parents of every child shown,
- * in link order and as linked (a repeated link repeats the parent), and every
- * marriage between two people shown. `shown` holds whoever has a card.
+ * in link order and each once (a link written twice is still one parent, as in
+ * `graphOf`), and every marriage between two people shown. `shown` holds whoever
+ * has a card.
  */
 export function lineFamilies(state: TreeState, shown: Record<string, unknown>): Record<string, LineFamily> {
   const byChild: Record<string, string[]> = {};
@@ -147,7 +149,8 @@ export function lineFamilies(state: TreeState, shown: Record<string, unknown>): 
 
   for (const l of state.links) {
     if (!shown[l.parent] || !shown[l.child]) continue;
-    (byChild[l.child] = byChild[l.child] || []).push(l.parent);
+    const ps = (byChild[l.child] = byChild[l.child] || []);
+    if (ps.indexOf(l.parent) < 0) ps.push(l.parent);
   }
   for (const cid of Object.keys(byChild)) {
     const key = byChild[cid].slice().sort().join("|");

@@ -7,9 +7,10 @@
  * The seeds are fixed, so a failure names the tree to rebuild:
  *   synthTree({ seed, size }) from src/testing/trees.ts
  *
- * Known issue, found by this test: by years, on some trees a line runs through a
- * card. It is pinned as a count per tree, so a rewrite of the layout cannot change it
- * unnoticed; the fix will empty that snapshot.
+ * By years this test used to find lines through cards on a fifth of the trees: a
+ * guessed year put a child level with its parent, and the routing knew only "down,
+ * across, down" and let a family's lines cross the family's own cards. Both modes
+ * now owe the same promise here, the rows apart.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -23,12 +24,10 @@ import { nodeCards } from "../testing/cards.ts";
 const TREES = 200;
 const finite = (v: number) => Number.isFinite(v);
 
-type Fault = { through: boolean; text: string };
-
 /** Everything wrong with the picture of one tree; empty when all is well. */
-function faults(s: TreeState): Fault[] {
-  const found: Fault[] = [];
-  const fault = (text: string) => found.push({ through: false, text });
+function faults(s: TreeState): string[] {
+  const found: string[] = [];
+  const fault = (text: string) => found.push(text);
   const { pos, level } = layout(s, nodeCards());
   const ids = Object.keys(pos);
 
@@ -57,7 +56,7 @@ function faults(s: TreeState): Fault[] {
       continue;
     }
     if (/NaN|Infinity|undefined/.test(it.d)) fault("NaN in a line: " + it.d);
-    if (hitsCard(it.pts, rects)) found.push({ through: true, text: "a line runs through a card: " + it.d });
+    if (hitsCard(it.pts, rects)) fault("a line runs through a card: " + it.d);
     for (let i = 1; i < it.pts.length; i++) {
       const a = it.pts[i - 1];
       const b = it.pts[i];
@@ -80,20 +79,13 @@ const cases = (() => {
 })();
 
 test(`${TREES} random trees by generations keep every promise`, () => {
-  const broken = cases.flatMap(({ seed, size }) => faults(synthTree({ seed, size })).map((f) => `seed ${seed}, size ${size}: ${f.text}`));
+  const broken = cases.flatMap(({ seed, size }) => faults(synthTree({ seed, size })).map((f) => `seed ${seed}, size ${size}: ${f}`));
   assert.deepEqual(broken, []);
 });
 
-const byYears = cases.map(({ seed, size }) => ({ seed, size, faults: faults({ ...synthTree({ seed, size }), timeline: true }) }));
-
-test(`${TREES} random trees by years keep every promise but the rows and the known issue`, () => {
-  const broken = byYears.flatMap(({ seed, size, faults }) => faults.filter((f) => !f.through).map((f) => `seed ${seed}, size ${size}: ${f.text}`));
+test(`${TREES} random trees by years keep every promise but the rows: no overlap, no line through a card, no slant`, () => {
+  const broken = cases.flatMap(({ seed, size }) =>
+    faults({ ...synthTree({ seed, size }), timeline: true }).map((f) => `seed ${seed}, size ${size}: ${f}`),
+  );
   assert.deepEqual(broken, []);
-});
-
-test("known issue: by years, lines run through cards on some random trees", (t) => {
-  const through = byYears
-    .map(({ seed, size, faults }) => ({ seed, size, lines: faults.filter((f) => f.through).length }))
-    .filter((x) => x.lines > 0);
-  t.assert.snapshot(through);
 });

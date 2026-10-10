@@ -1,9 +1,10 @@
 import type { TreeState } from "../model/types.ts";
-import { Merge } from "../util.ts";
+import { extent, Merge } from "../util.ts";
 import { bracketY, leftRight, sideBySide } from "./couple.ts";
+import { detour, STUB, type Heading, type Run } from "./detour.ts";
 import { lineFamilies, type LineFamily } from "./families.ts";
 import { rectOf, type Box } from "./layout.ts";
-import { CLEAR, polyPath, route, type Pt, type Rect } from "./route.ts";
+import { CLEAR, hitsCard, polyPath, route, type Pt, type Rect } from "./route.ts";
 
 /** Which link a line answers for — the list of what can be removed is built from it. */
 export type EdgeRef =
@@ -15,6 +16,19 @@ export type EdgeRef =
 export type EdgeItem =
   | { kind: "path"; d: string; hot: boolean; arrow: boolean; ref?: EdgeRef; pts: Pt[]; dashed?: boolean }
   | { kind: "joint"; x: number; y: number; hot: boolean };
+
+type PathItem = Extract<EdgeItem, { kind: "path" }>;
+
+/** A line `route` drew, and what a detour for it would need to know. */
+interface Routed {
+  item: PathItem;
+  /** the family it belongs to; -1 for a sibling line */
+  gi: number;
+  /** the cards it belongs to: it touches them at its ends */
+  own: Rect[];
+  leave: Heading;
+  arrive: Heading;
+}
 
 interface Vert {
   x: number;
@@ -38,6 +52,47 @@ function crossAt(xa: number, xb: number, y: number, gi: number, verts: Vert[]): 
   }
   return out;
 }
+
+/** The crossings of every horizontal of a path with the verticals of other families. */
+function crossAll(pts: Pt[], gi: number, verts: Vert[]): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < pts.length; i++) {
+    if (Math.abs(pts[i].y - pts[i - 1].y) < 0.01) out.push(...crossAt(pts[i - 1].x, pts[i].x, pts[i].y, gi, verts));
+  }
+  return out;
+}
+
+/**
+ * A second look at every line `route` drew. One that runs into a card — by years it
+ * can: the cards stand at every height there, a family's own cards among them — is
+ * searched for again over the grid (detour.ts), keeping off the lines of the other
+ * families as best it can. `fam` is the family of every item of `out`, -1 for none.
+ */
+function keepOffCards(routed: Routed[], out: EdgeItem[], fam: number[], cards: Rect[], verts: Vert[]): void {
+  for (const r of routed) {
+    const { item } = r;
+    if (item.pts.length < 2 || !hitsCard(item.pts, cards)) continue;
+    const lines: Run[] = [];
+    out.forEach((it, k) => {
+      if (it.kind !== "path" || it === item || it.dashed || (r.gi >= 0 && fam[k] === r.gi)) return;
+      for (let i = 1; i < it.pts.length; i++) {
+        lines.push({ x1: it.pts[i - 1].x, y1: it.pts[i - 1].y, x2: it.pts[i].x, y2: it.pts[i].y });
+      }
+    });
+    const found = detour(item.pts[0], r.leave, item.pts[item.pts.length - 1], r.arrive, cards, r.own, lines);
+    if (!found) continue;
+    item.pts = found;
+    item.d = item.dashed ? polyPath(found) : polyPath(found, crossAll(found, r.gi, verts));
+  }
+}
+
+/**
+ * Whether no line can leave a joint at (x, y): it lies inside a card, deeper than the
+ * crossing check lets a line go, or a card begins right under it, too close for the
+ * line to the children to go down.
+ */
+const boxedIn = (x: number, y: number, cards: Rect[]): boolean =>
+  cards.some((o) => x > o.x1 + 1.5 && x < o.x2 - 1.5 && y > o.y1 - STUB && y < o.y2 - 1.5);
 
 interface Geo {
   gi: number;
@@ -292,6 +347,45 @@ function spreadBuses(geo: Geo[], pos: Record<string, Box>, cards: Rect[]): void 
 }
 
 /**
+ * By years the joint of a family, halfway between parents who may stand far apart
+ * and at different heights, can land on somebody else's card or right on top of
+ * one, and then every line of the family runs into that card. It moves to the
+ * nearest place clear of the cards, with room below it for the line down:
+ * sideways between the parents first, then up or down between their bottom and the
+ * bus. By generations the joint lies in the space between rows and never moves.
+ */
+function freeJoint(G: Geo, pos: Record<string, Box>, cards: Rect[]): void {
+  if (G.bracket || G.ps.length < 2 || !G.cs.length || !boxedIn(G.jx, G.jy, cards)) return;
+  const [xlo, xhi] = extent(G.ps, (p) => pos[p].x);
+  const ylo = Math.min(G.jy, G.bandLo - 2);
+  const yhi = Math.max(G.jy, G.barY - 4);
+  const xs = [G.jx];
+  const ys = [G.jy];
+  for (const o of cards) {
+    xs.push(o.x1 - CLEAR - 2, o.x2 + CLEAR + 2);
+    ys.push(o.y1 - STUB - CLEAR - 2, o.y2 + CLEAR + 2);
+  }
+  const clear = (x: number, y: number) =>
+    !cards.some((o) => x > o.x1 - CLEAR && x < o.x2 + CLEAR && y > o.y1 - STUB - CLEAR && y < o.y2 + CLEAR);
+  let best: Pt | null = null;
+  let bestCost = Infinity;
+  for (const x of xs) {
+    if (x < xlo || x > xhi) continue;
+    for (const y of ys) {
+      if (y < ylo || y > yhi || !clear(x, y)) continue;
+      const cost = Math.abs(x - G.jx) + 2 * Math.abs(y - G.jy);
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = { x, y };
+      }
+    }
+  }
+  if (!best) return;
+  G.jx = G.sx = best.x;
+  G.jy = G.sy = best.y;
+}
+
+/**
  * Pass 2 for one family: its lines, with bridges where they cross the verticals of
  * other families. `others` are the x of every vertical, kept clear of while going
  * round the cards.
@@ -303,9 +397,16 @@ function drawFamily(
   verts: Vert[],
   others: number[],
   out: EdgeItem[],
+  routed: Routed[],
 ): void {
   // every card is an obstacle; each line excludes its own two ends
   const obsExcept = (ids: string[]): Rect[] => cards.filter((c) => ids.indexOf(c.id) < 0).map((c) => c.r);
+  const rectsOf = (ids: string[]): Rect[] => cards.filter((c) => ids.indexOf(c.id) > -1).map((c) => c.r);
+  /** The line goes out, and on the list for a second look. */
+  const emit = (item: PathItem, own: string[], leave: Heading, arrive: Heading) => {
+    out.push(item);
+    routed.push({ item, gi: G.gi, own: rectsOf(own), leave, arrive });
+  };
   const { gi, ps, cs, hot } = G;
   if (G.bracket) {
     const bp: Pt[] = [
@@ -332,14 +433,17 @@ function drawFamily(
         // the crossbar must pass under both cards, not through them
         Math.max(pos[ps[0]].y + pos[ps[0]].h, pos[ps[1]].y + pos[ps[1]].h) + 4,
       );
-      out.push({
-        kind: "path",
-        hot,
-        arrow: false,
-        ref: { kind: "couple", a: ps[0], b: ps[1], children: cs },
-        pts: fp,
-        d: polyPath(fp, crossAt(pos[ps[0]].x, pos[ps[1]].x, G.flatY, gi, verts)),
-      });
+      emit(
+        {
+          kind: "path",
+          hot,
+          arrow: false,
+          ref: { kind: "couple", a: ps[0], b: ps[1], children: cs },
+          pts: fp,
+          d: polyPath(fp, crossAt(pos[ps[0]].x, pos[ps[1]].x, G.flatY, gi, verts)),
+        },
+        ps, 1, -1,
+      );
     }
     return;
   }
@@ -347,14 +451,17 @@ function drawFamily(
     for (const pid of ps) {
       const p = pos[pid];
       const lp = route(p.x, p.y + p.h, G.jx, G.jy, G.jy, obsExcept(ps), false, p.y + p.h + 2);
-      out.push({
-        kind: "path",
-        hot,
-        arrow: false,
-        ref: { kind: "leg", parent: pid, children: cs },
-        pts: lp,
-        d: polyPath(lp, crossAt(p.x, G.jx, G.jy, gi, verts)),
-      });
+      emit(
+        {
+          kind: "path",
+          hot,
+          arrow: false,
+          ref: { kind: "leg", parent: pid, children: cs },
+          pts: lp,
+          d: polyPath(lp, crossAt(p.x, G.jx, G.jy, gi, verts)),
+        },
+        ps, 1, 0,
+      );
     }
     out.push({ kind: "joint", x: G.jx, y: G.jy, hot });
   }
@@ -371,14 +478,17 @@ function drawFamily(
     );
     const sx = Math.abs(G.sx - c.x) < SNAP && roomBelow ? c.x : G.sx;
     const cp = route(sx, G.sy, c.x, c.y - ARROW_GAP, G.barY, obs, true, undefined, others);
-    out.push({
-      kind: "path",
-      hot,
-      arrow: true,
-      ref: { kind: "child", parents: ps, child: cid },
-      pts: cp,
-      d: polyPath(cp, crossAt(G.sx, c.x, G.barY, gi, verts)),
-    });
+    emit(
+      {
+        kind: "path",
+        hot,
+        arrow: true,
+        ref: { kind: "child", parents: ps, child: cid },
+        pts: cp,
+        d: polyPath(cp, crossAt(G.sx, c.x, G.barY, gi, verts)),
+      },
+      ps.concat([cid]), 1, 1,
+    );
   }
 }
 
@@ -392,21 +502,29 @@ function siblingLines(
   pos: Record<string, Box>,
   level: Record<string, number>,
   selected: string | null,
+  cards: { id: string; r: Rect }[],
   out: EdgeItem[],
+  routed: Routed[],
 ): void {
+  const own = (a: string, b: string): Rect[] => cards.filter((c) => c.id === a || c.id === b).map((c) => c.r);
   for (const sb of state.sibs || []) {
     if (!pos[sb.a] || !pos[sb.b]) continue;
     const [L, R] = leftRight(pos[sb.a], pos[sb.b]);
     const hot = selected === sb.a || selected === sb.b;
     let pts: Pt[];
+    let arc = false;
     if (sideBySide(pos, level, sb.a, sb.b)) {
       const cy = bracketY(L, R);
       pts = [{ x: L.x + L.w / 2, y: cy }, { x: R.x - R.w / 2, y: cy }];
     } else {
       const y = Math.min(L.y, R.y) - ARC_RISE;
       pts = [{ x: L.x, y: L.y }, { x: L.x, y }, { x: R.x, y }, { x: R.x, y: R.y }];
+      arc = true;
     }
-    out.push({ kind: "path", hot, arrow: false, dashed: true, ref: { kind: "sibling", a: sb.a, b: sb.b }, pts, d: polyPath(pts) });
+    const item: PathItem = { kind: "path", hot, arrow: false, dashed: true, ref: { kind: "sibling", a: sb.a, b: sb.b }, pts, d: polyPath(pts) };
+    out.push(item);
+    // by years the two stand at different heights, and the arc can meet a card on its way
+    if (arc) routed.push({ item, gi: -1, own: own(sb.a, sb.b), leave: -1, arrive: 1 });
   }
 }
 
@@ -419,6 +537,7 @@ export function computeEdges(
   const out: EdgeItem[] = [];
   const uni = lineFamilies(state, pos);
   const cards = Object.keys(pos).map((id) => ({ id, r: rectOf(pos[id]) }));
+  const rects = cards.map((c) => c.r);
 
   const leftmost = (k: string): number => {
     const src = uni[k].children.length ? uni[k].children : uni[k].parents;
@@ -428,7 +547,8 @@ export function computeEdges(
   const verts: Vert[] = [];
   const geo = keys.map((key, gi) => familyGeometry(uni[key], gi, pos, level, selected, verts));
 
-  spreadBuses(geo, pos, cards.map((c) => c.r));
+  spreadBuses(geo, pos, rects);
+  for (const G of geo) freeJoint(G, pos, rects);
 
   for (const G of geo) {
     if (!G.cs.length) continue;
@@ -441,7 +561,14 @@ export function computeEdges(
 
   /** the verticals of other links: we do not hug them while going round the cards */
   const others = verts.map((v) => v.x);
-  for (const G of geo) drawFamily(G, pos, cards, verts, others, out);
-  siblingLines(state, pos, level, selected, out);
+  const routed: Routed[] = [];
+  const fam: number[] = [];
+  for (const G of geo) {
+    drawFamily(G, pos, cards, verts, others, out, routed);
+    while (fam.length < out.length) fam.push(G.gi);
+  }
+  siblingLines(state, pos, level, selected, cards, out, routed);
+  while (fam.length < out.length) fam.push(-1);
+  keepOffCards(routed, out, fam, rects, verts);
   return out;
 }
