@@ -16,6 +16,13 @@ test("sex from the surname and the given name when there is no patronymic", () =
   assert.equal(guessSex("Владимир"), "m");
   assert.equal(guessSex("Илья"), "m", "a male name despite the -я ending");
   assert.equal(guessSex("дочь Валя"), "f", "a role word outweighs the ending");
+  assert.equal(guessSex("Петръ"), "m", "the old spelling with a hard sign");
+});
+
+test("a name the rules do not know leaves the sex unknown rather than guessing a man", () => {
+  for (const name of ["John Smith", "Mary Smith", "Anna", "Любовь", "Нико", "Ли Вэй", "?"]) {
+    assert.equal(guessSex(name), "u", name);
+  }
 });
 
 test("strict matching does not glue sisters together by a shared maiden name", () => {

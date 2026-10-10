@@ -63,7 +63,8 @@ const ROLES: Record<string, Sex> = {
 /**
  * Sex from the patronymic, the surname, the ending of the given name and the role
  * words. Every word is checked separately with a `$` anchor: `\b` in JS treats only
- * `[A-Za-z0-9_]` as a boundary, so it never fires on Cyrillic.
+ * `[A-Za-z0-9_]` as a boundary, so it never fires on Cyrillic. A name the rules do not
+ * know is "u": a wrong guess would refuse a marriage as one of two men or two women.
  */
 export function guessSex(name: string): Sex {
   const parts = norm(name).split(" ").filter(Boolean).filter((w) => w !== "я");
@@ -85,9 +86,9 @@ export function guessSex(name: string): Sex {
 
   const first = parts[0];
   if (/[ая]$/.test(first)) return MALE_A.indexOf(first) >= 0 ? "m" : "f";
-  if (/й$/.test(first)) return "m";
-  if (/[ьиоуыэе]$/.test(first)) return "u";
-  return "m";
+  // a Russian man's name ends in a consonant (Владимир, Андрей); a soft sign, another
+  // vowel or another script altogether is beyond these rules, and then nothing is guessed
+  return /[бвгджзйклмнпрстфхцчшщъ]$/.test(first) ? "m" : "u";
 }
 
 /** The mark's colour: blue for men, pink for women — the familiar pair. */

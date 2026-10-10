@@ -18,6 +18,27 @@ export const VIEW = "_view.json";
 export const okId = (v: unknown): v is string =>
   typeof v === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(v) && !Object.hasOwn(Object.prototype, v);
 
+/**
+ * The fields of a person the app knows, the link lists of a card and `years` (the old
+ * format, read and dropped). Anything else a card carries is kept in the person's
+ * `extra` — that is the last name here — and written back into the card on save.
+ */
+export const PERSON_FIELDS: readonly string[] = [
+  "id", "name", "maiden", "alt", "born", "died", "sex", "n", "fx", "fy", "years",
+  "parents", "spouses", "siblings", "extra",
+];
+const FIELDS = new Set(PERSON_FIELDS);
+
+/**
+ * The unknown fields of a person, from their `extra`: never one the card already has.
+ * `Object.fromEntries` and the spread define a `__proto__` key as a plain field, so
+ * none can reach a prototype.
+ */
+const extraOf = (v: unknown): Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v)
+    ? Object.fromEntries(Object.entries(v).filter(([k]) => !FIELDS.has(k)))
+    : {};
+
 /** The file a person's card is kept in. */
 export const cardName = (id: string): string => id + ".json";
 
@@ -175,7 +196,8 @@ export interface CardSet {
 
 /**
  * The tree to cards. `tree` is the body of a save, unchecked: an id outside `okId`
- * is dropped, and so is a link to someone who is not there.
+ * is dropped, and so is a link to someone who is not there. The fields of a person's
+ * `extra` are written into the card beside the known ones, which win on a clash.
  */
 export function treeToCards(tree: any): CardSet {
   const people = tree?.people && typeof tree.people === "object" ? tree.people : {};
@@ -225,7 +247,8 @@ export function treeToCards(tree: any): CardSet {
       doc.fx = Math.round(p.fx * 100) / 100;
       doc.fy = Math.round(p.fy * 100) / 100;
     }
-    cards.push([cardName(id), JSON.stringify(doc, null, 2) + "\n"]);
+    // the fields the app does not know go back where they came from, after its own
+    cards.push([cardName(id), JSON.stringify({ ...doc, ...extraOf(p.extra) }, null, 2) + "\n"]);
   }
 
   const hidden = Array.isArray(tree.hidden) ? tree.hidden.filter((id: unknown) => known.has(id)) : [];

@@ -50,7 +50,7 @@ test("tangled kinship does not loop: a person in two roles is one line", () => {
   const him = addPerson(s, { name: "Он", sex: "m" });
   const her = addPerson(s, { name: "Она", sex: "f" });
   link(s, him, her); // her father...
-  addPair(s, him, her); // ...and her husband, sad as that is
+  s.pairs.push({ a: him, b: her }); // ...and her husband: addPair refuses that, but an old file may hold it
   const rows = kinOf(s, her);
   assert.equal(rows.length, 1, "one person, one line");
   assert.equal(rows[0].label, "отец · муж");

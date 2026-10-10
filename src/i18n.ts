@@ -187,6 +187,7 @@ const RU: Record<string, string> = {
   "reason.selfSpouse": "Человек не может быть супругом самому себе",
   "reason.selfSibling": "Человек не может быть братом самому себе",
   "reason.lineage": "Они уже родитель и потомок: {a} и {b}",
+  "reason.spouseLineage": "Так супруги {a} и {b} оказались бы родителем и потомком",
 
   "kin.father": "отец",
   "kin.mother": "мать",
@@ -378,6 +379,7 @@ const EN: Record<string, string> = {
   "reason.selfSpouse": "A person cannot be their own spouse",
   "reason.selfSibling": "A person cannot be their own sibling",
   "reason.lineage": "They are already parent and descendant: {a} and {b}",
+  "reason.spouseLineage": "That would make the spouses {a} and {b} parent and descendant",
 
   "kin.father": "father",
   "kin.mother": "mother",
@@ -394,7 +396,7 @@ const EN: Record<string, string> = {
 
   "date.born": "b. ",
   "date.died": "d. ",
-  "card.maiden": "ур. {name}",
+  "card.maiden": "née {name}",
 };
 
 const DICT: Record<Lang, Record<string, string>> = { ru: RU, en: EN };

@@ -73,19 +73,18 @@ test("undo brings back the previous state", () => {
   assert.equal(render("ru", run(s, { type: "undo" }).notice!.msg), "Отменять нечего");
 });
 
-test("editing fields does not clutter the undo history", () => {
+test("typing into a field takes one undo step, not one per letter", () => {
   const { s, ivan } = start();
-  const a = run(
-    s,
-    { type: "update", id: ivan, patch: { born: "20.05.1902" }, quiet: true },
-    { type: "update", id: ivan, patch: { born: "20.05.1902" }, quiet: true },
-  );
-  assert.equal(a.history.length, 0);
+  const born = (v: string): Action => ({ type: "update", id: ivan, patch: { born: v }, quiet: true });
+  const a = run(s, born("2"), born("20.05"), born("20.05.1902"));
+  assert.equal(a.history.length, 1);
   assert.equal(a.tree.people[ivan].born, "20.05.1902");
   // whereas changing the sex is an ordinary change and can be undone
   const b = run(a, { type: "update", id: ivan, patch: { sex: "f" } });
-  assert.equal(b.history.length, 1);
-  assert.equal(run(b, { type: "undo" }).tree.people[ivan].sex, "m");
+  assert.equal(b.history.length, 2);
+  const undone = run(b, { type: "undo" });
+  assert.equal(undone.tree.people[ivan].sex, "m");
+  assert.equal(run(undone, { type: "undo" }).tree.people[ivan].born, "", "the whole date goes in one undo");
 });
 
 test("deleting a person removes their links and clears the selection", () => {
@@ -204,7 +203,7 @@ test("a sibling: with parents known they become their child, without them a dash
   assert.equal(s3.tree.sibs.length, 0);
 });
 
-/* ------- actions the tests above do not touch, and known issues of the model -------
+/* ------- actions the tests above do not touch, and fixed issues of the model -------
    The names below are made up. */
 
 /** A father, a mother and their son, with the son's card pinned where it was dragged. */
@@ -273,23 +272,34 @@ test("unlinking a couple removes the marriage", () => {
   assert.equal(pinned(next.tree), 0);
 });
 
-test("known issue WEB-8: the gap slider releases every pinned card and leaves nothing to undo", () => {
-  const { s } = family();
+test("WEB-8: the gap slider releases every pinned card, and undo brings them back with the old gap", () => {
+  const { s, son } = family();
   const next = reducer(s, { type: "setGap", gap: 1.6 });
   assert.equal(next.tree.gap, 1.6);
   assert.equal(pinned(next.tree), 0);
   assert.equal(next.fitSeq, s.fitSeq + 1);
-  assert.deepEqual(next.history, [], "no snapshot: the positions cannot be brought back");
+  assert.deepEqual(next.history, [s.tree], "the tree before the release is an undo step");
+  const dragged = run(next, { type: "setGap", gap: 1.7 }, { type: "setGap", gap: 1.8 });
+  assert.equal(dragged.tree.gap, 1.8);
+  assert.equal(dragged.history.length, 1, "with nothing pinned the slider takes no step, however long it is dragged");
+  const undone = reducer(dragged, { type: "undo" });
+  assert.equal(undone.tree.gap, 1);
+  assert.deepEqual([undone.tree.people[son].fx, undone.tree.people[son].fy], [40, 80]);
 });
 
-test("known issue WEB-8: switching to years releases every pinned card and leaves nothing to undo", () => {
-  const { s } = family();
+test("WEB-8: switching to years releases every pinned card, and undo brings them back by generations", () => {
+  const { s, son } = family();
   const on = reducer(s, { type: "setTimeline", on: true });
   assert.equal(on.tree.timeline, true);
   assert.equal(on.notice?.msg.k, "msg.byYears");
   assert.equal(pinned(on.tree), 0);
-  assert.deepEqual(on.history, []);
-  assert.equal(reducer(on, { type: "setTimeline", on: false }).notice?.msg.k, "msg.byGenerations");
+  assert.deepEqual(on.history, [s.tree]);
+  const off = reducer(on, { type: "setTimeline", on: false });
+  assert.equal(off.notice?.msg.k, "msg.byGenerations");
+  assert.equal(off.history.length, 1, "nothing was pinned any more, so no step");
+  const undone = reducer(on, { type: "undo" });
+  assert.equal(undone.tree.timeline, false);
+  assert.deepEqual([undone.tree.people[son].fx, undone.tree.people[son].fy], [40, 80]);
 });
 
 test("a notice is shown with a new number each time; fit only asks for a fit", () => {
@@ -309,55 +319,149 @@ test("undo keeps at most sixty steps", () => {
   assert.equal(s.history.length, 60);
 });
 
-test("known issue ARC-3: field edits take no snapshot, and undo throws them away with the step before", () => {
-  const { s, dad, son } = family();
+test("ARC-3: typing is one undo step per field; undo brings back the value from before it, and the step before stays", () => {
+  const { s, dad, mom, son } = family();
   const cut = reducer(s, { type: "cut", parent: dad, child: son }); // history: [family]
-  const typed = reducer(cut, { type: "update", id: son, patch: { name: "Пётр Иванович Орлов-младший", born: "01.01.1950" }, quiet: true });
-  assert.equal(typed.history.length, 1, "the typing added no step");
-  const undone = reducer(typed, { type: "undo" });
-  assert.equal(undone.tree.people[son].name, "Пётр Иванович Орлов", "the typed name is gone");
-  assert.equal(undone.tree.people[son].born, "", "and the typed date");
+  const name = (v: string): Action => ({ type: "update", id: son, patch: { name: v }, quiet: true });
+  const born = (v: string): Action => ({ type: "update", id: son, patch: { born: v }, quiet: true });
+  const typed = run(cut, name("Пётр Иванович Орлов-"), name("Пётр Иванович Орлов-мл"), name("Пётр Иванович Орлов-младший"), born("01"), born("01.01.1950"));
+  assert.equal(typed.history.length, 3, "one step for the name, one for the date");
+  const once = reducer(typed, { type: "undo" });
+  assert.equal(once.tree.people[son].born, "", "the typed date is gone");
+  assert.equal(once.tree.people[son].name, "Пётр Иванович Орлов-младший", "the name waits for the next undo");
+  const twice = reducer(once, { type: "undo" });
+  assert.equal(twice.tree.people[son].name, "Пётр Иванович Орлов", "the name from before the typing");
+  assert.deepEqual(parentsOf(twice.tree, son), [mom], "the cut is still there");
+  assert.deepEqual(parentsOf(reducer(twice, { type: "undo" }).tree, son).sort(), [dad, mom].sort(), "and is undone on its own");
 });
 
-test("known issue DOM-5: linking two people as siblings gives the second all of the first one's parents", () => {
+test("any other action ends the typing: the next keystroke in the same field is a new undo step", () => {
+  const { s, mom, son } = family();
+  const name = (id: string, v: string): Action => ({ type: "update", id, patch: { name: v }, quiet: true });
+  const typing = run(s, name(son, "Пётр"));
+  assert.notEqual(typing.typing, null);
+  assert.equal(reducer(typing, { type: "fit" }).typing, null);
+  const again = run(typing, { type: "select", id: mom }, { type: "select", id: son }, name(son, "Пётр И"));
+  assert.equal(again.history.length, 2);
+  assert.equal(run(again, name(mom, "Анна")).history.length, 3, "another person's field is another step");
+  assert.equal(run(again, { type: "fit" }, name(son, "Пётр И")).history.length, 2, "a keystroke that changes nothing takes no step");
+});
+
+test("DOM-5: two people who both have parents become siblings by a recorded kinship, and nobody's parents change", () => {
   const { s, dad, mom, son } = family();
   const tree = structuredClone(s.tree);
   const other = addPerson(tree, { name: "Сергей Николаевич Волков" });
   const hisDad = addPerson(tree, { name: "Николай Андреевич Волков" });
   link(tree, hisDad, other);
   const next = reducer(initialAppState(tree), { type: "connect", mode: "sibling", from: son, to: other });
-  assert.deepEqual(parentsOf(next.tree, other).sort(), [dad, hisDad, mom].sort(), "three parents now");
+  assert.deepEqual(parentsOf(next.tree, other), [hisDad], "his own father only");
+  assert.deepEqual(parentsOf(next.tree, son).sort(), [dad, mom].sort());
+  assert.deepEqual(next.tree.sibs, [{ a: son, b: other }]);
+  assert.equal(next.notice?.msg.k, "msg.siblingOf");
 });
 
-test("known issue DOM-V1: a marriage between a person and their own child is accepted", () => {
+test("linked as siblings, the one without parents gets the other's, whichever way the link is drawn", () => {
+  const { s, dad, mom, son } = family();
+  const tree = structuredClone(s.tree);
+  const loner = addPerson(tree, { name: "Ольга Ивановна Орлова" });
+  for (const [from, to] of [[son, loner], [loner, son]]) {
+    const next = reducer(initialAppState(tree), { type: "connect", mode: "sibling", from, to });
+    assert.deepEqual(parentsOf(next.tree, loner).sort(), [dad, mom].sort(), from === son ? "from the son" : "from her");
+    assert.deepEqual(next.tree.sibs, [], "ordinary arrows, no dashed line");
+  }
+});
+
+test("DOM-V1: a marriage within one line, up or down, is refused, and it says why", () => {
   const tree = emptyState();
   const father = addPerson(tree, { name: "Иван Петрович Орлов" });
   const daughter = addPerson(tree, { name: "Анна Ивановна Орлова" });
+  const grandson = addPerson(tree, { name: "Пётр Сергеевич Волков" });
+  const granddaughter = addPerson(tree, { name: "Мария Сергеевна Волкова" });
   link(tree, father, daughter);
-  const next = reducer(initialAppState(tree), { type: "connect", mode: "spouse", from: father, to: daughter });
-  assert.deepEqual(partnersOf(next.tree, father), [daughter]);
+  link(tree, daughter, grandson);
+  link(tree, daughter, granddaughter);
+  const s = initialAppState(tree);
+  for (const [from, to] of [[father, daughter], [granddaughter, father], [daughter, grandson]]) {
+    const next = reducer(s, { type: "connect", mode: "spouse", from, to });
+    assert.deepEqual(next.tree.pairs, [], `${tree.people[from].name} and ${tree.people[to].name}`);
+    assert.equal(next.notice?.msg.k, "reason.lineage");
+    assert.equal(next.history.length, 0);
+  }
+  const why = reducer(s, { type: "connect", mode: "spouse", from: father, to: daughter }).notice!.msg;
+  assert.equal(render("en", why), "They are already parent and descendant: Иван Петрович Орлов and Анна Ивановна Орлова");
+  assert.equal(addPair(tree, grandson, granddaughter).ok, true, "a brother and a sister are not one line up or down: the rule stops there");
 });
 
-test("known issue DOM-3: a name the rules do not know is taken for a man, and then a marriage is refused", () => {
+test("a link that would make spouses parent and descendant is refused, and it says why", () => {
+  const tree = emptyState();
+  const husband = addPerson(tree, { name: "Иван Петрович Орлов" });
+  const wife = addPerson(tree, { name: "Анна Сергеевна Орлова" });
+  const herFather = addPerson(tree, { name: "Сергей Андреевич Волков" });
+  assert.equal(addPair(tree, husband, wife).ok, true);
+  assert.equal(link(tree, herFather, wife).ok, true);
+  const direct = link(tree, husband, wife);
+  assert.equal(direct.ok, false);
+  assert.equal(!direct.ok && direct.reason.k, "reason.spouseLineage");
+  assert.equal(link(tree, husband, herFather).ok, false, "over her father: he would be her grandfather");
+  assert.deepEqual(tree.links, [{ parent: herFather, child: wife }], "nothing was linked");
+  const why = !direct.ok ? direct.reason : null;
+  assert.equal(render("en", why!), "That would make the spouses Иван Петрович Орлов and Анна Сергеевна Орлова parent and descendant");
+  const child = addPerson(tree, { name: "Пётр Иванович Орлов" });
+  assert.equal(link(tree, husband, child).ok, true, "their own child is fine");
+});
+
+test("DOM-3: a name the rules do not know leaves the sex unknown, and the marriage goes through", () => {
   const tree = emptyState();
   const john = addPerson(tree, { name: "John Smith" });
   const mary = addPerson(tree, { name: "Mary Smith" });
-  assert.equal(tree.people[mary].sex, "m");
+  assert.deepEqual([tree.people[john].sex, tree.people[mary].sex], ["u", "u"]);
   const next = reducer(initialAppState(tree), { type: "connect", mode: "spouse", from: john, to: mary });
-  assert.deepEqual(next.tree.pairs, [], "two men, as far as the model knows");
-  assert.equal(next.notice?.msg.k, "reason.bothMen");
+  assert.deepEqual(partnersOf(next.tree, john), [mary]);
+  assert.equal(next.notice?.msg.k, "msg.marriage");
 });
 
-test("known issue DOM-4: ids named after Object.prototype members bring the layout down", () => {
+test("DOM-4: ids named after Object.prototype members get new ones, links and all, and the layout stands", () => {
   const person = (id: string, name: string, sex: string) => ({ id, name, sex, n: 1 });
   const tree = normalize({
     people: { constructor: person("constructor", "Иван Петрович Орлов", "m"), toString: person("toString", "Пётр Иванович Орлов", "m") },
     links: [{ parent: "constructor", child: "toString" }],
   });
-  assert.throws(() => layout(tree, nodeCards()));
+  assert.deepEqual(Object.keys(tree.people), ["constructor-1", "toString-1"]);
+  assert.deepEqual(tree.links, [{ parent: "constructor-1", child: "toString-1" }]);
+  for (const timeline of [false, true]) {
+    const { pos, level } = layout({ ...tree, timeline }, nodeCards());
+    assert.deepEqual(Object.keys(pos).sort(), ["constructor-1", "toString-1"]);
+    if (!timeline) assert.equal(level["toString-1"] - level["constructor-1"], 1);
+  }
 });
 
-test("known issue DOM-8: normalize throws on containers of the wrong type", () => {
-  assert.throws(() => normalize({ people: {}, links: {} }));
-  assert.throws(() => normalize({ people: {}, pairs: "ab" }));
+test("DOM-8: normalize takes containers of the wrong type for empty ones", () => {
+  const people = { a: { name: "Иван Петрович Орлов" }, b: { name: "Анна Сергеевна Орлова" } };
+  for (const bad of [{}, { a: "a", b: "b" }, "ab", 7, null, true]) {
+    const s = normalize({ people, links: bad, pairs: bad, sibs: bad, hidden: bad });
+    assert.deepEqual([s.links, s.pairs, s.sibs, s.hidden], [[], [], [], []], JSON.stringify(bad));
+    assert.deepEqual(Object.keys(s.people), ["a", "b"]);
+  }
+  for (const bad of [[], [{ name: "Анна" }], "ab", 7, null]) assert.deepEqual(normalize({ people: bad }).people, {}, JSON.stringify(bad));
+  for (const bad of ["a tree", 7, null, [], [{ people: people }]]) assert.deepEqual(normalize(bad), emptyState(), JSON.stringify(bad));
+  const odd = normalize({ people: { a: "Анна", b: null }, links: [null, "a>b", 7, { parent: 1, child: 2 }] });
+  assert.deepEqual(Object.keys(odd.people), ["a", "b"], "a person who is not an object is still somebody");
+  assert.deepEqual(odd.links, []);
+});
+
+test("normalize keeps a link, a marriage and a siblinghood written twice once", () => {
+  const s = normalize({
+    people: {
+      a: { name: "Иван Петрович Орлов" },
+      b: { name: "Анна Сергеевна Орлова" },
+      c: { name: "Пётр Иванович Орлов" },
+      d: { name: "Ольга Петровна Волкова" },
+    },
+    links: [{ parent: "a", child: "c" }, { parent: "a", child: "c" }, { parent: "b", child: "c" }],
+    pairs: [{ a: "a", b: "b" }, { a: "b", b: "a" }, { a: "a", b: "b" }],
+    sibs: [{ a: "c", b: "d" }, { a: "d", b: "c" }],
+  });
+  assert.deepEqual(s.links, [{ parent: "a", child: "c" }, { parent: "b", child: "c" }]);
+  assert.deepEqual(s.pairs, [{ a: "a", b: "b" }]);
+  assert.deepEqual(s.sibs, [{ a: "c", b: "d" }]);
 });

@@ -21,6 +21,26 @@ const splitList = (v: string): string[] =>
     .map((x) => x.trim())
     .filter(Boolean);
 
+/**
+ * The text of a field. It is kept apart from the person, since typing passes through
+ * states the person never stores (a trailing space, "a,"); `read` is what the person
+ * stores of it. When the person's value changes from elsewhere — an undo — the field
+ * takes it up instead of holding on to what was typed.
+ */
+function useText(value: string, read: (text: string) => string): [string, (text: string) => void] {
+  const [text, setText] = useState(value);
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) {
+    setSeen(value);
+    if (read(text) !== value) setText(value);
+  }
+  return [text, setText];
+}
+
+const same = (v: string) => v;
+const trim = (v: string) => v.trim();
+const listText = (v: string) => splitList(v).join(", ");
+
 const SEX: { v: Sex; t: string }[] = [
   { v: "m", t: "ed.male" },
   { v: "f", t: "ed.female" },
@@ -29,11 +49,11 @@ const SEX: { v: Sex; t: string }[] = [
 
 export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
   const { s, d, t, lang } = useApp();
-  const [name, setName] = useState(p.name);
-  const [maiden, setMaiden] = useState(p.maiden);
-  const [born, setBorn] = useState(p.born);
-  const [died, setDied] = useState(p.died);
-  const [alt, setAlt] = useState((p.alt || []).join(", "));
+  const [name, setName] = useText(p.name, same);
+  const [maiden, setMaiden] = useText(p.maiden, trim);
+  const [born, setBorn] = useText(p.born, trim);
+  const [died, setDied] = useText(p.died, trim);
+  const [alt, setAlt] = useText((p.alt || []).join(", "), listText);
 
   const set = (patch: Partial<Person>) => d({ type: "update", id: p.id, patch, quiet: true });
   const nameField = useNameField();

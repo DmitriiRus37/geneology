@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { fromFolder } from "../../tools/metrics.ts";
 import { synthTree } from "../testing/trees.ts";
 import { cardIdOf, cardsToTree, treeToCards, VIEW, type CardSet } from "./cards.ts";
+import { initialAppState, reducer } from "./store.ts";
 import { normalize } from "./tree.ts";
 import type { TreeState } from "./types.ts";
 
@@ -62,17 +63,52 @@ test("cardsToTree: an empty store is no tree, a broken card is reported and skip
   assert.match(warned[0], /^skipping a\.json: /);
 });
 
-test("known issue: normalize accepts an id that the cards silently drop", () => {
-  const s = normalize({ people: { "a b": { name: "Анна" }, ok: { name: "Борис" } } });
-  assert.deepEqual(Object.keys(s.people), ["a b", "ok"]);
-  assert.deepEqual(treeToCards(s).ids, ["ok"]);
+test("normalize gives an id the cards cannot keep a new one, links and all, and the cards keep everyone", () => {
+  // through JSON: a "__proto__" key of an object literal would be its prototype, not a person
+  const raw = JSON.parse(`{
+    "people": { "a b": {"name":"Анна"}, "ok": {"name":"Борис"}, "a_b-1": {"name":"Вера"}, "__proto__": {"name":"Глеб"}, "Дарья": {"name":"Дарья"} },
+    "links": [{"parent":"a b","child":"ok"}, {"parent":"__proto__","child":"ok"}, {"parent":"toString","child":"ok"}],
+    "pairs": [{"a":"a b","b":"__proto__"}],
+    "sibs": [{"a":"ok","b":"Дарья"}],
+    "hidden": ["a b", "valueOf"]
+  }`);
+  const s = normalize(raw);
+  assert.deepEqual(Object.keys(s.people), ["a_b-2", "ok", "a_b-1", "proto-1", "p-1"], "made of the old id where it can be, never one taken");
+  assert.deepEqual(Object.values(s.people).map((p) => p.name), ["Анна", "Борис", "Вера", "Глеб", "Дарья"]);
+  assert.equal(s.people["a_b-2"].id, "a_b-2");
+  assert.deepEqual(s.links, [{ parent: "a_b-2", child: "ok" }, { parent: "proto-1", child: "ok" }]);
+  assert.deepEqual(s.pairs, [{ a: "a_b-2", b: "proto-1" }]);
+  assert.deepEqual(s.sibs, [{ a: "ok", b: "p-1" }]);
+  assert.deepEqual(s.hidden, ["a_b-2"]);
+  assert.equal(Object.getPrototypeOf(s.people), Object.prototype, "no person reached the prototype");
+  assert.deepEqual(treeToCards(s).ids, Object.keys(s.people), "the cards keep everyone");
+  assert.deepEqual(canon(roundTrip(s)), canon(s));
+  assert.deepEqual(normalize(raw), s, "the same tree always gets the same ids");
 });
 
-test("known issue: the cards keep unknown fields, normalize drops them, the next save loses them", () => {
-  const tree = cardsToTree([["a.json", '{"id":"a","name":"Анна","note":"x"}']], assert.fail)!;
-  assert.equal(tree.people.a.note, "x");
-  assert.equal("note" in normalize(tree).people.a, false);
-  assert.doesNotMatch(treeToCards(normalize(tree)).cards[0][1], /note/);
+test("a field the app does not know survives read -> normalize -> save; the known fields win a clash", () => {
+  const tree = cardsToTree([["a.json", '{"id":"a","name":"Анна","note":"x","source":{"book":3},"born":"1900"}']], assert.fail)!;
+  const s = normalize(tree);
+  assert.deepEqual(s.people.a.extra, { note: "x", source: { book: 3 } });
+  // an edit, the way the app keeps its state and saves it
+  const edited = reducer(initialAppState(s), { type: "update", id: "a", patch: { died: "01.02.1980" } }).tree;
+  const kept = normalize(JSON.parse(JSON.stringify(edited)));
+  assert.deepEqual(kept, edited, "localStorage and a JSON save read back the same");
+  const card = JSON.parse(treeToCards(kept).cards[0][1]);
+  assert.deepEqual([card.note, card.source, card.died, card.extra], ["x", { book: 3 }, "01.02.1980", undefined]);
+  assert.deepEqual(normalize(cardsToTree([["a.json", treeToCards(kept).cards[0][1]]], assert.fail)).people.a.extra, s.people.a.extra);
+
+  const clash = treeToCards({ people: { a: { name: "Анна", extra: { name: "Борис", parents: ["b"], years: "1900", note: "y" } } } });
+  assert.deepEqual(JSON.parse(clash.cards[0][1]), { id: "a", name: "Анна", maiden: "", alt: [], born: "", died: "", sex: "u", n: 0, parents: [], spouses: [], siblings: [], note: "y" });
+
+  const odd = treeToCards(normalize(cardsToTree([["a.json", '{"id":"a","name":"Анна","__proto__":{"x":1},"toString":"y"}']], assert.fail)));
+  assert.match(odd.cards[0][1], /"__proto__": \{\n\s+"x": 1\n\s+\},\n\s+"toString": "y"/, "names of Object.prototype members are kept as plain fields");
+  assert.equal(({} as Record<string, unknown>).x, undefined, "and reach no prototype");
+
+  const old = normalize({ people: { a: { name: "Анна", years: "1900-1980" } } });
+  assert.deepEqual([old.people.a.born, old.people.a.died], ["??.??.1900", "??.??.1980"]);
+  assert.equal(old.people.a.extra, undefined, "the old \"years\" is read as the dates and dropped");
+  assert.ok(Object.values(normalize(family).people).every((p) => !("extra" in p)), "nobody carries an empty extra");
 });
 
 /** The metrics reader over a folder with these files, next to the server's reading of them. */
