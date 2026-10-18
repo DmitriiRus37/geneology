@@ -60,6 +60,22 @@ const now = () => new Date().toISOString().slice(11, 19);
 
 const home = (r: Role) => (r === "admin" ? "/admin" : "/");
 
+/**
+ * Sent with every answer. The app is one page with its script and styles inline, so
+ * those need 'unsafe-inline'; everything else comes from this server or nowhere.
+ * Photos are drawn from data: and blob: URLs on export, and no page may frame ours.
+ */
+export const SECURITY_HEADERS: Record<string, string> = {
+  "content-security-policy":
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; " +
+    "form-action 'self'; frame-ancestors 'none'",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "cross-origin-opener-policy": "same-origin",
+};
+
 /** Minutes, rounded up, for "try again in". */
 const minutes = (ms: number) => Math.max(1, Math.ceil(ms / 60e3));
 
@@ -309,6 +325,8 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
     // written once the answer has gone out, so the status is the real one
     const started = Date.now();
     res.on("finish", () => s.accessLog(req, res, started));
+
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
 
     try {
       const ctx: Ctx = { req, res, role: auth.roleOf(req) };

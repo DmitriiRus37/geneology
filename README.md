@@ -205,7 +205,9 @@ Password guessing is locked out per address: after 5 wrong passwords within 15 m
 the form or by HTTP Basic, the address gets `429 Too Many Requests` for 15 minutes, and its
 passwords, the right one included, are not even checked until then. Requests fired at once
 are counted one by one. A session already open stays open. `GENEALOGY_LOCK_TRIES` and
-`GENEALOGY_LOCK_MINUTES` change the numbers.
+`GENEALOGY_LOCK_MINUTES` change the numbers. Every answer carries a Content-Security-Policy
+(the page loads nothing from other sites, and no other site may frame it), plus `nosniff`,
+`X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`.
 
 The tree survives a deploy, but the server's disk is still a single copy. Take one off now
 and then, and put it back into an empty server, the first time or after losing the data:
@@ -607,7 +609,9 @@ GENEALOGY_USER=fam GENEALOGY_PASS='<пароль к древу>' make deploy
 форму или через HTTP Basic — адрес на 15 минут получает `429 Too Many Requests`, и до тех пор
 его пароли, даже верный, вообще не проверяются. Запросы, посланные разом, считаются каждый.
 Уже открытая сессия остаётся открытой. Числа меняют `GENEALOGY_LOCK_TRIES` и
-`GENEALOGY_LOCK_MINUTES`.
+`GENEALOGY_LOCK_MINUTES`. Каждый ответ несёт Content-Security-Policy (страница ничего не
+грузит с чужих сайтов, и чужой сайт не может встроить её в рамку), а также `nosniff`,
+`X-Frame-Options: DENY` и `Referrer-Policy: no-referrer`.
 
 Выкладку древо переживает, но диск сервера — всё равно единственная копия. Время от времени
 забирайте её и возвращайте в пустой сервер — в первый раз или после потери данных:

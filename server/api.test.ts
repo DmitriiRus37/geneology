@@ -724,3 +724,25 @@ describe("password guessing is locked out per address", () => {
     assert.equal(codes.filter((c) => c === 429).length, 5, codes.join(","));
   });
 });
+
+describe("security headers", () => {
+  let srv: Running;
+  before(async () => {
+    srv = await startServer({ user: ["fam", "secret"] });
+  });
+  after(() => srv.stop());
+
+  test("every answer carries them: the page, the API, the login form, a refusal", async () => {
+    const auth = basic("fam", "secret");
+    for (const [path, headers] of [["/", auth], ["/api/tree", auth], ["/login", {}], ["/api/tree", {}], ["/api/health", {}]] as const) {
+      const r = await fetch(srv.base + path, { headers, redirect: "manual" });
+      const csp = r.headers.get("content-security-policy") ?? "";
+      assert.match(csp, /default-src 'self'/, path);
+      assert.match(csp, /frame-ancestors 'none'/, path);
+      assert.match(csp, /object-src 'none'/, path);
+      assert.equal(r.headers.get("x-content-type-options"), "nosniff", path);
+      assert.equal(r.headers.get("x-frame-options"), "DENY", path);
+      assert.equal(r.headers.get("referrer-policy"), "no-referrer", path);
+    }
+  });
+});

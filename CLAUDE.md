@@ -32,7 +32,11 @@ admin opens the page and only for the rows shown;
 `--host`/`HOST` sets the bind address, still `127.0.0.1` by default. Wrong passwords, by the
 form or by Basic, are counted per address in `server/throttle.ts`: `GENEALOGY_LOCK_TRIES` (5)
 within `GENEALOGY_LOCK_MINUTES` (15) lock the address out with 429 for as long, and the
-password is not checked while locked; a valid session cookie is never counted. `/api/health` is the
+password is not checked while locked; a valid session cookie is never counted. Every answer
+carries `SECURITY_HEADERS` from `server/routes.ts` (CSP with `'unsafe-inline'` for the
+single-file page, `img-src` with `data:`/`blob:` for exports, `frame-ancestors 'none'`,
+`nosniff`, `X-Frame-Options`, `Referrer-Policy`): anything the app starts loading from
+another origin must be added there. `/api/health` is the
 only route outside the guard. `LOG_DIR` turns on the request log (one line per request,
 no headers and no bodies); it rotates itself at `LOG_MAX` (10 MB) keeping `LOG_KEEP` (3)
 gzipped files. Without `LOG_DIR` nothing is written, so local runs stay quiet. Both logs
