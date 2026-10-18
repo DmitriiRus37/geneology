@@ -29,31 +29,31 @@ step 9 is mandatory.
 
 ## Required inputs
 
-Obtain these before doing anything. Do not write them into files in the repository
-and do not commit them. Stop immediately if any value is missing or empty.
+They live in `.env` at the repository root, which git ignores and the image never
+sees; the `Makefile` reads it. Never write them into any other file and never
+commit them. If `.env` is missing, copy `.env.example` and ask the user for the
+values. Stop immediately if any value is missing or empty.
 
 ```text
-production-host=      # IP address of the server
-ssh-user=             # usually root
-ssh-password=         # only for a password login; with an SSH key, skip it
-genealogy-user=       # the login that guards the tree itself
-genealogy-password=   # the password that guards the tree itself
+PROD_HOST=            # IP address of the server
+SSH_USER=             # usually root
+SSHPASS=              # only for a password login; with an SSH key, leave it empty
+GENEALOGY_USER=       # the login that guards the tree itself
+GENEALOGY_PASS=       # the password that guards the tree itself
 ```
 
 `genealogy-user` / `genealogy-password` are the HTTP Basic credentials the service
 asks for. Compose refuses to start without them, so the tree cannot end up on the
 open internet unprotected by accident.
 
-Export them once and reuse:
+The commands below that call `ssh` or `curl` directly need them in the shell too:
 
 ```bash
-export PROD_HOST='<production-host>'
-export SSHPASS='<ssh-password>'          # omit entirely when using a key
-export GENEALOGY_USER='<genealogy-user>'
-export GENEALOGY_PASS='<genealogy-password>'
+set -a; . ./.env; set +a
 ```
 
-Everything below goes through the `Makefile`, which already knows the SSH options.
+Everything else goes through the `Makefile`, which reads `.env` itself and already
+knows the SSH options. Never print the values.
 
 ## Procedure
 

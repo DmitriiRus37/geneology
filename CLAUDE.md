@@ -95,7 +95,7 @@ make smoke BASE=<url>                        # check a running instance
 make backup                                 # pull the remote tree into backups/
 make applog N=50                            # tail the remote request log
 make applog_grep PATTERN=<text>             # search it, gzipped history included
-PROD_HOST=<ip> SSHPASS=<pw> GENEALOGY_USER=<u> GENEALOGY_PASS=<p> make deploy
+make deploy                                 # reads PROD_HOST, SSHPASS, GENEALOGY_* from .env
 ```
 
 Rebuild `dist/` after changing anything under `src/`: `npm start` serves `dist/`, not the

@@ -10,12 +10,18 @@
 #   make clean                                           # remove the image and the tarball
 #   make backup / make restore FILE=backups/<file>.zip   # take the tree off / put it into an empty server
 #
-#   PROD_HOST=1.2.3.4 SSHPASS='<root password>' \
-#   GENEALOGY_USER=fam GENEALOGY_PASS='<tree password>' make deploy
+#   cp .env.example .env    # once: fill in the server and the passwords
+#   make deploy
 #
-# SSHPASS is only needed for a password login; with a key, leave it out.
-# GENEALOGY_USER/GENEALOGY_PASS are the login to the tree itself — they are
-# written into .env on the server and never into the repository.
+# The server's address and the passwords live in .env next to this file, which
+# git ignores and the image never sees. A value on the command line still wins:
+# `make backup PROD_HOST=1.2.3.4`. SSHPASS is only needed for a password login;
+# with a key, leave it out. GENEALOGY_USER/GENEALOGY_PASS are the login to the
+# tree itself — deploy writes them into .env on the server, never into the
+# repository.
+
+-include .env
+export PROD_HOST SSH_USER SSHPASS GENEALOGY_USER GENEALOGY_PASS GENEALOGY_ADMIN_USER GENEALOGY_ADMIN_PASS
 
 IMAGE         := genealogy_app:latest
 PLATFORM      := linux/amd64            # the remote machine's architecture
@@ -75,11 +81,11 @@ save: build_docker
 	@du -h $(LOCAL_TARBALL)
 
 need_host:
-	@test -n "$(PROD_HOST)" || { echo "Set PROD_HOST=<server ip>"; exit 1; }
+	@test -n "$(PROD_HOST)" || { echo "Set PROD_HOST=<server ip> in .env"; exit 1; }
 
 need_pass:
-	@test -n "$$GENEALOGY_USER" || { echo "Set GENEALOGY_USER=<login for the tree>"; exit 1; }
-	@test -n "$$GENEALOGY_PASS" || { echo "Set GENEALOGY_PASS=<password for the tree>"; exit 1; }
+	@test -n "$$GENEALOGY_USER" || { echo "Set GENEALOGY_USER=<login for the tree> in .env"; exit 1; }
+	@test -n "$$GENEALOGY_PASS" || { echo "Set GENEALOGY_PASS=<password for the tree> in .env"; exit 1; }
 
 ## deploy: ship the image to the server and (re)start the container.
 ##         The tree lives in $(REMOTE_DIR)/data on the server and survives it.

@@ -189,8 +189,8 @@ make smoke                                   # check the running instance
 Rolling out to the server:
 
 ```bash
-PROD_HOST=1.2.3.4 SSHPASS='<root password>' \
-GENEALOGY_USER=fam GENEALOGY_PASS='<tree password>' make deploy
+cp .env.example .env    # once: the server's address and the passwords; git ignores it
+make deploy
 ```
 
 The image is built here and shipped as a tarball; the server only loads it and starts the
@@ -593,8 +593,8 @@ make smoke                                   # проверить подняты
 Выкладка на сервер:
 
 ```bash
-PROD_HOST=1.2.3.4 SSHPASS='<пароль root>' \
-GENEALOGY_USER=fam GENEALOGY_PASS='<пароль к древу>' make deploy
+cp .env.example .env    # один раз: адрес сервера и пароли; git его не видит
+make deploy
 ```
 
 Образ собирается здесь и уезжает тарболом; сервер только загружает его и поднимает

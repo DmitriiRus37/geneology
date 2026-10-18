@@ -14,19 +14,14 @@ what has been uploaded to it.
 
 ## Required inputs
 
-Stop immediately if any value is missing or empty. Do not write them into files in
-the repository and do not commit them.
-
-```text
-production-host=      # IP address of the server
-genealogy-user=       # the login that guards the tree
-genealogy-password=   # the password that guards the tree
-```
+`PROD_HOST`, `GENEALOGY_USER` and `GENEALOGY_PASS` live in `.env` at the repository
+root, which git ignores; the `Makefile` reads it. Never write them anywhere else and
+never commit them. If `.env` is missing, copy `.env.example` and ask the user for the
+values. Stop immediately if any value is missing or empty. For a direct `curl`, load
+them into the shell first, without printing them:
 
 ```bash
-export PROD_HOST='<production-host>'
-export GENEALOGY_USER='<genealogy-user>'
-export GENEALOGY_PASS='<genealogy-password>'
+set -a; . ./.env; set +a
 ```
 
 ## Taking a backup
