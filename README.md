@@ -146,12 +146,13 @@ means `persons/`, a yellow one means the browser. Move a tree between the two mo
 
 ### On a remote machine
 
-The same app can run on a server, in Docker. There it works differently on purpose: the
-tree lives **in the container's memory** and never touches the server's disk. You bring it
-in as a zip archive with **Upload archive**, edit it, take it away with **Download archive**
-and wipe it with **Clear**. A restart, a reboot or a deploy leaves a clean slate, so nothing
-of your family stays on a machine you do not own. A fresh instance comes up genuinely empty:
-the sample tree is stripped out of the image, so the page carries nobody's names.
+The same app can run on a server, in Docker. The tree is kept the same way as at home, a
+card per person and `photos/` beside them, in the `data/` folder next to the compose file on
+the server, mounted into the container. A restart, a reboot or a deploy keeps it. A fresh
+instance comes up genuinely empty: the sample tree is stripped out of the image, so the page
+carries nobody's names. Bring your tree in as a zip archive with **Upload archive**, which a
+folder takes only while it holds nobody's card, so an archive can fill an empty server but
+never overwrite a tree. Take a copy away with **Download archive**.
 
 The server holds one tree, not one per visitor: everyone who logs in with the same password
 sees the same people, and **Clear** empties it for all of them at once. **Log out** drops the
@@ -200,11 +201,12 @@ page at `/login` and gets a session cookie that lasts until the server restarts;
 drops it. Tools keep using HTTP Basic, so `curl -u`, `make backup` and `make smoke` work
 unchanged.
 
-Because the tree is in memory, **a deploy wipes it**. Take the archive first and put it
-back afterwards:
+The tree survives a deploy, but the server's disk is still a single copy. Take one off now
+and then, and put it back into an empty server, the first time or after losing the data:
 
 ```bash
-make backup                                  # writes backups/persons_<date>.zip, keeps five
+make backup                                  # writes backups/persons_<date>.zip, photos included, keeps five
+make restore FILE=backups/persons_<date>.zip # only into a server that holds no tree yet
 ```
 
 The server writes one line per request into `logs/access.log` next to the compose file —
@@ -222,7 +224,7 @@ make applog_grep PATTERN=192.0.2.7           # search the gzipped history too
 Two things worth knowing. Basic auth over plain HTTP sends the password in clear text — on
 an untrusted network put TLS in front or reach the service through an SSH tunnel. And the
 local `persons/` folder is never touched by any of this: the remote instance only ever
-holds what has been uploaded to it.
+holds what has been uploaded to it, and keeps it on the server's disk.
 
 ### Development
 
@@ -304,7 +306,7 @@ src/
 tools/metrics.ts  layout quality metrics
 tools/smoke.mjs   smoke check of a running instance, local or remote
 Dockerfile        the image for a remote machine: build stage, then node and one html
-docker-compose-prod.yml  what runs on the server: one service, no database, no volume
+docker-compose-prod.yml  what runs on the server: one service, no database, the tree in data/
 Makefile          build, ship, logs, backup
 ```
 
@@ -542,12 +544,13 @@ Node.js, и откройте в браузере. Внизу панели все
 
 ### На удалённой машине
 
-То же приложение умеет работать на сервере, в Docker. Там оно устроено нарочно иначе:
-древо живёт **в памяти контейнера** и до диска сервера не доходит. Вы привозите его
-zip-архивом кнопкой **«Загрузить архив»**, правите, увозите кнопкой **«Скачать архив»** и
-стираете кнопкой **«Очистить»**. Перезапуск, перезагрузка и выкладка оставляют чистый лист —
-на чужой машине от вашей семьи не остаётся ничего. Свежий экземпляр поднимается по-настоящему
-пустым: образцовое древо вырезано из образа, и на странице нет ничьих имён.
+То же приложение умеет работать на сервере, в Docker. Древо хранится так же, как дома, —
+по карточке на человека и `photos/` рядом, — в папке `data/` возле compose-файла на сервере,
+подключённой в контейнер. Перезапуск, перезагрузка и выкладка его не трогают. Свежий
+экземпляр поднимается по-настоящему пустым: образцовое древо вырезано из образа, и на
+странице нет ничьих имён. Своё древо привозите zip-архивом кнопкой **«Загрузить архив»** —
+папка берёт архив, только пока в ней нет ни одной карточки, так что архив может заполнить
+пустой сервер, но не затереть древо. Копию увозите кнопкой **«Скачать архив»**.
 
 Древо у сервера одно, а не по штуке на посетителя: все, кто вошёл тем же паролем, видят одних
 и тех же людей, и **«Очистить»** опустошает древо сразу для всех. **«Выйти»** сбрасывает сессию.
@@ -594,10 +597,12 @@ GENEALOGY_USER=fam GENEALOGY_PASS='<пароль к древу>' make deploy
 ходят по-прежнему через HTTP Basic, так что `curl -u`, `make backup` и `make smoke`
 работают как работали.
 
-Раз древо в памяти, **выкладка его стирает**. Сначала заберите архив, потом верните:
+Выкладку древо переживает, но диск сервера — всё равно единственная копия. Время от времени
+забирайте её и возвращайте в пустой сервер — в первый раз или после потери данных:
 
 ```bash
-make backup                                  # кладёт backups/persons_<дата>.zip, хранит пять
+make backup                                  # кладёт backups/persons_<дата>.zip вместе с фото, хранит пять
+make restore FILE=backups/persons_<дата>.zip # только в сервер, где древа ещё нет
 ```
 
 Сервер пишет по строке на запрос в `logs/access.log` рядом с compose-файлом: время, адрес
@@ -615,7 +620,7 @@ make applog_grep PATTERN=192.0.2.7           # искать и в сжатой �
 Две вещи, о которых стоит помнить. Пароль при HTTP Basic поверх обычного HTTP идёт
 открытым текстом — в недоверенной сети поставьте впереди TLS или ходите через SSH-туннель.
 И локальная папка `persons/` во всём этом не участвует: на удалённом экземпляре лежит
-только то, что туда загрузили.
+только то, что туда загрузили, — на диске сервера.
 
 ### Разработка
 
@@ -696,7 +701,7 @@ src/
 tools/metrics.ts  метрики качества раскладки
 tools/smoke.mjs   проверка поднятого экземпляра, своего или удалённого
 Dockerfile        образ для удалённой машины: стадия сборки, дальше node и один html
-docker-compose-prod.yml  что крутится на сервере: одна служба, без базы и без тома
+docker-compose-prod.yml  что крутится на сервере: одна служба, без базы, древо в data/
 Makefile          сборка, выкладка, логи, резервная копия
 ```
 

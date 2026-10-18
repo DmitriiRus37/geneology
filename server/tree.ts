@@ -48,8 +48,12 @@ export interface Tree {
   read(): Promise<WireTree | null>;
   /** Write `tree` if the store is still at `rev`; writes go in turn. */
   save(rev: string, tree: unknown): Promise<SaveResult>;
-  /** Replace everything with the cards and photos of an archive (memory only), in turn with the writes. */
-  upload(cards: Map<string, string>, photos: Map<string, Buffer>): Promise<{ tree: WireTree | null; rev: string }>;
+  /**
+   * Take in the cards and photos of an archive, in turn with the writes. In memory they
+   * replace everything; a folder takes them only while it holds nobody's card, so an
+   * archive can fill an empty folder but never overwrite a tree. Null when refused.
+   */
+  upload(cards: Map<string, string>, photos: Map<string, Buffer>): Promise<{ tree: WireTree | null; rev: string } | null>;
   /** Every file of the store by name, in name order. */
   files(): Promise<Map<string, string>>;
   /** The photos the cards show, by name; one a card names but the store lacks is left out. */
@@ -104,6 +108,11 @@ export function createTree(store: Store): Tree {
     upload: (cards, photos) =>
       inTurn(async () => {
         if (store.kind === "memory") store.replace(cards, photos);
+        else {
+          for (const name of (await store.names()) ?? []) if (cardIdOf(name, await store.read(name))) return null;
+          for (const [name, bytes] of photos) await store.putPhoto(name, bytes);
+          for (const [name, text] of cards) await store.write(name, text);
+        }
         return { tree: await read(), rev: await store.rev() };
       }),
     async files() {

@@ -267,7 +267,8 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
         </div>
 
         <div className="fgroup">
-          {where?.kind === "disk" && where.store === "memory" && (
+          {/* a folder on disk takes an archive only while it is empty: a first start or a restore */}
+          {where?.kind === "disk" && (where.store === "memory" || !ids.length) && (
             <button className="quiet" onClick={() => zipRef.current?.click()}>
               {t("rail.uploadZip")}
             </button>

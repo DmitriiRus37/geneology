@@ -155,7 +155,7 @@ describe("an open server on a folder", () => {
     assert.deepEqual(json(srv.dir, "p3.json").siblings, [], "the kinship goes from the other card too");
   });
 
-  test("an archive cannot be uploaded into a folder", async () => {
+  test("an archive cannot be uploaded over a tree in a folder", async () => {
     const r = await fetch(srv.base + "/api/upload", { method: "POST", body: new Uint8Array(zip({ "p9.json": card("p9", "X") })) });
     assert.equal(r.status, 409);
     assert.equal(existsSync(join(srv.dir, "p9.json")), false);
@@ -645,5 +645,36 @@ describe("photos behind a password", () => {
     const { body } = await postPhoto(srv.base, jpeg("x"), basic("fam", "secret"));
     assert.equal((await fetch(srv.base + "/api/photo/" + body.photo)).status, 401);
     assert.equal((await fetch(srv.base + "/api/photo/" + body.photo, { headers: basic("fam", "secret") })).status, 200);
+  });
+});
+
+describe("an archive into an empty folder", () => {
+  let srv: Running;
+  before(async () => {
+    // a view and a file that is nobody's card do not make a tree
+    srv = await startServer({ store: "disk", files: { "_view.json": "{}\n", "notes.json": '{"title":"not a card"}\n' } });
+  });
+  after(() => srv.stop());
+
+  test("an empty folder takes an archive, photos and all, and then refuses the next one", async () => {
+    const name = "0123456789abcdef.jpg";
+    const first = zip({
+      "persons/p1.json": card("p1", "A", { photo: name }),
+      "persons/_view.json": JSON.stringify({ timeline: true, gap: 1, hidden: [] }),
+      ["persons/photos/" + name]: jpeg("restored"),
+    });
+    const r = await fetch(srv.base + "/api/upload", { method: "POST", body: new Uint8Array(first) });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).people, 1);
+    assert.equal(json(srv.dir, "p1.json").photo, name);
+    assert.deepEqual(readFileSync(join(srv.dir, "photos", name)), jpeg("restored"));
+    assert.equal(readFileSync(join(srv.dir, "notes.json"), "utf8"), '{"title":"not a card"}\n');
+    const { body } = await getTree(srv.base);
+    assert.equal(body.tree.timeline, true);
+
+    const second = await fetch(srv.base + "/api/upload", { method: "POST", body: new Uint8Array(zip({ "persons/p2.json": card("p2", "B") })) });
+    assert.equal(second.status, 409);
+    assert.equal(existsSync(join(srv.dir, "p2.json")), false);
+    assert.deepEqual(Object.keys((await getTree(srv.base)).body.tree.people), ["p1"]);
   });
 });

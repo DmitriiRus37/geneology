@@ -184,15 +184,13 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
         return json(res, 200, { ok: true, ...out });
       },
     },
-    // An archive of cards replaces the whole tree. Into a folder on disk this is
-    // not allowed: that is the user's data, and we will not wipe it in one request.
+    // An archive of cards replaces the whole tree in memory. A folder on disk takes one
+    // only while it is empty — a first start or a restore: a tree that is there is the
+    // user's data, and we will not wipe it in one request.
     {
       path: "/api/upload",
       method: "POST",
       async run({ req, res }) {
-        if (tree.store.kind !== "memory") {
-          return json(res, 409, { ok: false, error: "the server writes into a folder on disk — an archive cannot be uploaded here" });
-        }
         let cards, photos;
         try {
           const entries = zipRead(await readBuffer(req));
@@ -206,6 +204,9 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
           return json(res, 400, { ok: false, error: "there are no cards (.json) in the archive" });
         }
         const out = await tree.upload(cards, photos);
+        if (!out) {
+          return json(res, 409, { ok: false, error: "the folder on disk already holds a tree — an archive is only taken into an empty one" });
+        }
         const people = Object.keys(out.tree?.people ?? {}).length;
         console.log(now() + "  archive loaded, people: " + people);
         return json(res, 200, { ok: true, people, ...out });

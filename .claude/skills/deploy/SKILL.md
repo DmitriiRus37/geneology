@@ -13,13 +13,19 @@ gzipped tarball; the server only runs `docker load` + `docker compose up`. The
 server compiles nothing: there is no npm, no node_modules and no `src/` on it.
 
 `docker-compose-prod.yml` has no `build:` section — the `app` service just runs the
-prebuilt `genealogy_app:latest` image. There is no database and no volume.
+prebuilt `genealogy_app:latest` image. There is no database.
 
-**The tree lives in the container's memory.** That is the whole point of the remote
-mode: nothing of the family stays on someone else's disk. It also means a deploy,
-a restart and a reboot all wipe the tree. So:
+**The tree lives on the server's disk**, in `/root/genealogy/data` (a card per
+person, `photos/` beside them), bind-mounted into the container as `/app/data`. A
+deploy, a restart and a reboot keep it. Never delete that folder to "reset"
+anything: it is the family tree.
 
-> Take the archive **before** deploying and put it back **after**. Step 3 and step 9.
+> Still take the archive **before** deploying (step 3): it is the copy that survives
+> losing the server. If the tree is missing afterwards, put it back (step 9).
+
+Servers deployed before this change kept the tree in memory. The first deploy of
+the disk version starts with an empty `data/`: step 3 is then the only copy, and
+step 9 is mandatory.
 
 ## Required inputs
 
@@ -77,8 +83,8 @@ If anything fails, fix it first. Do not deploy a red tree.
 
 ### 3. Back up the tree that is running now
 
-Skip only if the service has never been deployed to this host.
-This is the single copy that survives the deploy — the tree is in memory.
+Skip only if the service has never been deployed to this host. On a server still
+running the memory version this is the only copy that survives the deploy.
 
 ```bash
 make backup
@@ -92,7 +98,7 @@ ls -lh backups/ | tail -3
 ```
 
 If the backup fails but the service is running, **stop**. Find out why before you
-wipe the container. A deploy without a backup loses the tree.
+replace the container. A deploy without a backup risks the tree.
 
 ### 4. Check the server has docker
 
@@ -136,8 +142,8 @@ or `Restarting` is not — go to the failure checklist.
 make smoke BASE=http://$PROD_HOST:5179
 ```
 
-Every line must say `ok`. On a fresh instance "people in the tree: 0" is expected —
-nobody has opened the page yet.
+Every line must say `ok`. "people in the tree: 0" is expected only on a brand new
+server or on the first deploy after the memory version — then step 9 follows.
 
 ### 8. Check disk hygiene on the server
 
@@ -153,19 +159,19 @@ sshpass -e ssh -o StrictHostKeyChecking=no root@$PROD_HOST "docker image prune -
 sshpass -e ssh -o StrictHostKeyChecking=no root@$PROD_HOST "journalctl --vacuum-size=200M"
 ```
 
-### 9. Put the tree back
+### 9. Put the tree back, if it is missing
 
-The container came up empty. Restore the archive from step 3:
+Only when step 7 reported 0 people but the backup from step 3 has some. A folder
+takes an archive only while it holds no tree, so this can never overwrite one
+(it answers 409 instead):
 
 ```bash
-curl -fsS -u "$GENEALOGY_USER:$GENEALOGY_PASS" \
-  --data-binary @backups/<the file from step 3> \
-  "http://$PROD_HOST:5179/api/upload"
+make restore FILE=backups/<the file from step 3>
 ```
 
 It answers `{"ok":true,"people":N,...}`. Check that `N` matches what was there
-before. You can also do it from the browser: open the service, press **Upload
-archive** and pick the file.
+before. You can also do it from the browser: while the tree is empty the panel
+shows **Upload archive**.
 
 ### 10. Look at it
 
@@ -189,7 +195,10 @@ Common causes:
   by something else on the host.
 - **401 in the browser and you are sure the password is right** — the `.env` on the
   server is from an older deploy. Re-run `make deploy` with the right values.
-- **The page loads but the tree is empty** — expected after a deploy. Step 9.
+- **The page loads but the tree is empty** — the first deploy after the memory
+  version, or `data/` was lost. Step 9.
+- **The container cannot write the tree** (`EACCES` in the logs) — `data/` on the
+  server is not owned by uid 1000; `make deploy` chowns it, re-run it.
 - **`docker load` fails or the image is missing** — the tarball did not arrive in
   full; check the disk on the server and re-run `make deploy`.
 - **Disk full** — old images in `/var/lib/docker/overlay2`. Prune them, step 8.
@@ -201,8 +210,8 @@ Fix the smallest real cause, then repeat the cycle from step 2.
 - Basic auth over plain HTTP sends the password in clear text. On an untrusted
   network put TLS in front (a reverse proxy with a certificate), or reach the
   service through an SSH tunnel.
-- A reboot of the server empties the tree, exactly like a deploy. If the service is
-  meant to stay up between visits, run `make backup` on a schedule.
+- The tree on the server's disk is a single copy. Run `make backup` regularly, and
+  always before a deploy.
 - Never point this skill at the local `persons/` folder. That is the real family
   tree; the remote instance only ever sees what you upload to it.
 

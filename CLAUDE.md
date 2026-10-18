@@ -14,9 +14,12 @@ The server is TypeScript in `server/` that Node runs directly (type stripping, n
 wired together in `main.ts`; no module does anything on import or keeps global state. It has
 two stores behind one tree parser, `src/model/cards.ts` (imported by the server as it is, so
 it imports nothing and the image copies it with `server/*.ts`, tests excluded). **disk** (default) is the `persons/`
-folder. **memory** (`--store memory`, what the container runs) keeps everything in RAM:
-the tree arrives as a zip on `POST /api/upload`, leaves on `GET /api/download`, and a
-restart wipes it. Zip reading and writing are hand-rolled on `node:zlib` — the server
+folder (`--dir` or `GENEALOGY_DIR`; the container runs it on `/app/data`, bind-mounted from
+`data/` next to the compose file on the server, so the tree survives restarts and deploys).
+**memory** (`--store memory`) keeps everything in RAM and a restart wipes it. The tree
+arrives as a zip on `POST /api/upload` and leaves on `GET /api/download`; memory takes any
+archive, a folder only while it holds nobody's card (a first deploy or a restore,
+`make restore FILE=…`), so an upload can never overwrite a tree on disk. Zip reading and writing are hand-rolled on `node:zlib` — the server
 still has no dependencies. `GENEALOGY_USER`/`GENEALOGY_PASS` turn on the guard: browsers log in at `/login` and carry
 a session cookie that dies with the process, tools keep using HTTP Basic.
 `GENEALOGY_ADMIN_USER`/`GENEALOGY_ADMIN_PASS` add a second account, the only one allowed on

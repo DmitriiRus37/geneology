@@ -45,7 +45,7 @@ export function readConfig(argv: string[], env: Record<string, string | undefine
   // on your own machine the terminal is enough.
   const logDir = env.LOG_DIR ?? "";
   return {
-    persons: dirArg ? resolve(dirArg) : join(root, "persons"),
+    persons: resolve(dirArg ?? env.GENEALOGY_DIR ?? join(root, "persons")),
     dist: join(root, "dist"),
     port: Number(arg("--port") ?? env.PORT ?? 5179),
     // by default we listen to ourselves only: the server writes to the file system

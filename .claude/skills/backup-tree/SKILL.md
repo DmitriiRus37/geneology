@@ -3,10 +3,10 @@ name: backup-tree
 description: Take the family tree off the remote genealogy instance as a zip archive, or put an archive back onto it. Use this skill when asked to back up, save, restore, download or upload the tree on the server.
 ---
 
-The remote instance keeps the tree in the container's memory. Nothing is written
-to the server's disk — which is the point, and which means a restart, a reboot or
-a deploy empties it. **The archive taken by this skill is the only copy that
-survives.** Run it before any deploy and on a regular basis otherwise.
+The remote instance keeps the tree on the server's disk, in
+`/root/genealogy/data`, so a restart, a reboot or a deploy keeps it. That disk is
+still a single copy: **the archive taken by this skill is the one that survives
+losing the server.** Run it before any deploy and on a regular basis otherwise.
 
 This skill never touches the local `persons/` folder. That is the real family tree
 on this machine, and the remote instance is a separate copy that only ever holds
@@ -45,36 +45,33 @@ ls -lh backups/ | tail -3
 unzip -l "$(ls -1t backups/persons_*.zip | head -1)" | tail -3
 ```
 
-An archive of a populated tree is tens of kilobytes and holds one `.json` per
-person plus `_view.json`. **A 22-byte archive means the instance is empty** — the
+An archive of a populated tree is tens of kilobytes (more with photos) and holds
+one `.json` per person plus `_view.json`, and `photos/*.jpg` for the people who
+have one. **A 22-byte archive means the instance is empty** — the
 tree was already lost, or nobody has opened the page yet. Say so plainly rather
 than reporting a successful backup.
 
 ## Restoring
 
-Uploading replaces the whole tree on the instance. There is no merge.
+The server takes an archive only while its folder holds no tree: a brand new
+server, the first deploy after the memory version, or after losing `data/`. Over a
+tree it answers 409 and changes nothing. There is no merge.
 
 ```bash
-curl -fsS -u "$GENEALOGY_USER:$GENEALOGY_PASS" \
-  --data-binary @backups/<file> \
-  "http://$PROD_HOST:5179/api/upload"
+make restore FILE=backups/<file>
 ```
 
 The answer is `{"ok":true,"people":N,...}`. Check `N` against what you expected.
 
-The same thing from the browser: open the service, press **Upload archive**, pick
-the file. The sidebar then says how many people were loaded.
+The same thing from the browser: while the tree is empty the panel shows **Upload
+archive**; pick the file. The sidebar then says how many people were loaded.
 
-### Before restoring over a tree that is not empty
+### Replacing a tree that is not empty
 
-Ask first, and take a backup of what is there now:
-
-```bash
-make backup
-```
-
-Uploading is not undoable on the server — whatever was in memory is gone the moment
-the archive lands.
+The API will not do it. It takes the user's explicit request, a `make backup` of
+what is there now, and then emptying `/root/genealogy/data` on the server by hand
+before `make restore`. Ask first, show what will be lost, and never do it on your
+own.
 
 ## Seeding the remote instance from the local tree
 
@@ -93,7 +90,8 @@ machine; that is the user's call, not yours.
 ## What the archive contains
 
 The same files that lie in `persons/`: one `<id>.json` per person, plus
-`_view.json` with the canvas settings (timeline mode, gap, who is hidden). The
+`_view.json` with the canvas settings (timeline mode, gap, who is hidden), plus
+`photos/<name>.jpg` for every photo a card shows. The
 `persons/` prefix inside the archive is optional on upload — a flat archive of
 `.json` cards works too, and macOS litter (`__MACOSX`, `._name`, `.DS_Store`) is
 ignored.
