@@ -1,4 +1,4 @@
-import type { Person, Sex, TreeState } from "./types.ts";
+import type { Person, Sex } from "./types.ts";
 
 export const norm = (s: string): string =>
   String(s || "")
@@ -42,14 +42,6 @@ export function matches(p: Pick<Person, "name" | "maiden" | "alt">, filter: stri
   return allNames(p).some((n) => n.indexOf(f) > -1);
 }
 
-export function findByName(state: TreeState, name: string): string | null {
-  const key = norm(name);
-  const ids = Object.keys(state.people);
-  for (const id of ids) if (norm(state.people[id].name) === key) return id;
-  for (const id of ids) if (nameForms(state.people[id]).indexOf(key) > -1) return id;
-  return null;
-}
-
 const MALE_A = [
   "илья", "никита", "кузьма", "фома", "лука", "савва", "данила", "гаврила", "никола",
   "миша", "саша", "паша", "ваня", "коля", "дима", "витя", "сева", "женя", "валя", "слава",
@@ -71,7 +63,8 @@ const ROLES: Record<string, Sex> = {
 /**
  * Sex from the patronymic, the surname, the ending of the given name and the role
  * words. Every word is checked separately with a `$` anchor: `\b` in JS treats only
- * `[A-Za-z0-9_]` as a boundary, so it never fires on Cyrillic.
+ * `[A-Za-z0-9_]` as a boundary, so it never fires on Cyrillic. A name the rules do not
+ * know is "u": a wrong guess would refuse a marriage as one of two men or two women.
  */
 export function guessSex(name: string): Sex {
   const parts = norm(name).split(" ").filter(Boolean).filter((w) => w !== "я");
@@ -93,9 +86,9 @@ export function guessSex(name: string): Sex {
 
   const first = parts[0];
   if (/[ая]$/.test(first)) return MALE_A.indexOf(first) >= 0 ? "m" : "f";
-  if (/й$/.test(first)) return "m";
-  if (/[ьиоуыэе]$/.test(first)) return "u";
-  return "m";
+  // a Russian man's name ends in a consonant (Владимир, Андрей); a soft sign, another
+  // vowel or another script altogether is beyond these rules, and then nothing is guessed
+  return /[бвгджзйклмнпрстфхцчшщъ]$/.test(first) ? "m" : "u";
 }
 
 /** The mark's colour: blue for men, pink for women — the familiar pair. */

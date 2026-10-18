@@ -1,12 +1,14 @@
 # The genealogy image for a remote machine.
 #
 # The build runs on the native architecture ($BUILDPLATFORM) and produces one
-# html file; only that and server.mjs reach the final layer. The server has not
-# a single dependency, so there is no node_modules in the image either — hence
-# its size.
+# html file; only that and the server reach the final layer: server.mjs,
+# server/*.ts and the card format they import (src/model/cards.ts), all run by
+# Node as they are. The server has not a single dependency, so there is no
+# node_modules in the image either — hence its size.
 #
-# Inside the container the server runs in memory mode: the tree is brought in
-# and taken out as a zip archive, and nothing is left on the machine's disk.
+# Inside the container the server keeps the tree on disk, in /app/data, which
+# compose mounts from the host: a restart, a reboot or a deploy keeps it. A new,
+# empty folder takes the first tree as a zip archive ("Upload archive").
 
 # ---- build: the whole page in one file ----
 FROM --platform=$BUILDPLATFORM node:26-alpine AS build
@@ -24,19 +26,23 @@ RUN npm run build
 # ---- run ----
 FROM node:26-alpine
 ENV NODE_ENV=production \
-    GENEALOGY_STORE=memory \
+    GENEALOGY_STORE=disk \
+    GENEALOGY_DIR=/app/data \
     HOST=0.0.0.0 \
     PORT=5179 \
     LOG_DIR=/app/logs
 WORKDIR /app
 COPY server.mjs ./
+# the tests and their harness stay out: .dockerignore drops them from the context
+COPY server/*.ts ./server/
+COPY src/model/cards.ts ./src/model/
 COPY --from=build /app/dist ./dist
 
-# The only thing written to disk: one line per request, rotated at 10 MB with
-# three gzipped files kept. Bind-mount it from the host to keep it across
-# restarts. The tree itself still never touches the disk.
-RUN mkdir -p /app/logs && chown node:node /app/logs
-VOLUME /app/logs
+# Two folders are written to: the tree (a card per person, photos/ beside them)
+# and the request log, rotated at 10 MB with three gzipped files kept. Both are
+# bind-mounted from the host so they outlive the container.
+RUN mkdir -p /app/logs /app/data && chown node:node /app/logs /app/data
+VOLUME /app/logs /app/data
 
 USER node
 EXPOSE 5179

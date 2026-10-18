@@ -13,6 +13,7 @@ const STYLE =
   'text.alt{font-family:Arial,"DejaVu Sans",sans-serif;font-size:10.5px;fill:#94A1AD}' +
   "rect.box{fill:#fff;stroke:#C3CDD8;stroke-width:1}" +
   "circle.chip{stroke:none}" +
+  "circle.photo{fill:#E6EBF0;stroke:#C3CDD8;stroke-width:1}" +
   'text.mark{font-family:Arial,"DejaVu Sans",sans-serif;font-size:11.5px;font-weight:600}' +
   ".node.dim{opacity:1}" +
   ".node.sel rect.box{stroke:#C3CDD8;stroke-width:1}" +
@@ -44,7 +45,11 @@ export function renderSvg(b: BBox | null): Rendered | null {
   const h = Math.round(b.h + pad * 2);
   const clean = edges.cloneNode(true) as Element;
   clean.querySelectorAll(".hit").forEach((el) => el.remove()); // the transparent click lines are not needed in a picture
-  const inner = clean.outerHTML + nodes.outerHTML;
+  // a photo is a link to this server, which a file opened anywhere else cannot follow:
+  // the picture keeps the round frame where the photo stood
+  const people = nodes.cloneNode(true) as Element;
+  people.querySelectorAll("image").forEach((el) => el.remove());
+  const inner = clean.outerHTML + people.outerHTML;
   const src =
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + " " + h + '">' +
     MARKERS +

@@ -1,8 +1,37 @@
 /** Small interface pieces needed in several windows at once. */
-import { useEffect, type KeyboardEvent, type RefObject } from "react";
+import { useEffect, useState, type KeyboardEvent, type RefObject } from "react";
 import { normalizeDateInput, yearTag } from "../model/dates.ts";
 import { colorOf } from "../model/names.ts";
 import type { Person } from "../model/types.ts";
+import { NARROW } from "./screen.ts";
+
+/**
+ * Is the screen a phone? The stylesheet does most of the phone work on its own, but
+ * the sheet has to be measured and the canvas has to know how much of itself is
+ * covered, and neither can be answered in CSS.
+ */
+export function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW);
+    const on = () => setNarrow(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return narrow;
+}
+
+/**
+ * The attributes of a field holding a person's name, on a phone: its keyboard would
+ * otherwise "correct" a surname or a patronymic it does not know into a word it does,
+ * and start only the first word with a capital. On a desktop the field stays as it was.
+ */
+export function useNameField(): { autoCorrect?: string; autoCapitalize?: string; spellCheck?: boolean } {
+  return useNarrow() ? NAME_FIELD : NO_ATTRS;
+}
+const NAME_FIELD = { autoCorrect: "off", autoCapitalize: "words", spellCheck: false };
+const NO_ATTRS = {};
 
 /**
  * Close a popover with a click outside it and with Escape. The listener is attached on

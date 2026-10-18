@@ -8,13 +8,20 @@
 #   make run_local                                       # try the image on this machine
 #   make smoke                                           # check a running instance
 #   make clean                                           # remove the image and the tarball
+#   make backup / make restore FILE=backups/<file>.zip   # take the tree off / put it into an empty server
 #
-#   PROD_HOST=1.2.3.4 SSHPASS='<root password>' \
-#   GENEALOGY_USER=fam GENEALOGY_PASS='<tree password>' make deploy
+#   cp .env.example .env    # once: fill in the server and the passwords
+#   make deploy
 #
-# SSHPASS is only needed for a password login; with a key, leave it out.
-# GENEALOGY_USER/GENEALOGY_PASS are the login to the tree itself — they are
-# written into .env on the server and never into the repository.
+# The server's address and the passwords live in .env next to this file, which
+# git ignores and the image never sees. A value on the command line still wins:
+# `make backup PROD_HOST=1.2.3.4`. SSHPASS is only needed for a password login;
+# with a key, leave it out. GENEALOGY_USER/GENEALOGY_PASS are the login to the
+# tree itself — deploy writes them into .env on the server, never into the
+# repository.
+
+-include .env
+export PROD_HOST SSH_USER SSHPASS GENEALOGY_USER GENEALOGY_PASS GENEALOGY_ADMIN_USER GENEALOGY_ADMIN_PASS
 
 IMAGE         := genealogy_app:latest
 PLATFORM      := linux/amd64            # the remote machine's architecture
@@ -36,11 +43,13 @@ PW_OPTS  := $(if $(SSHPASS),-o PubkeyAuthentication=no -o PreferredAuthenticatio
 SSH := $(if $(SSHPASS),sshpass -e ssh,ssh) $(SSH_OPTS) $(PW_OPTS) $(SSH_USER)@$(PROD_HOST)
 SCP := $(if $(SSHPASS),sshpass -e scp,scp) $(SSH_OPTS) $(PW_OPTS)
 
-.PHONY: build_docker check run_local stop_local smoke save deploy logs applog applog_grep ps backup clean need_host need_pass
+.PHONY: build_docker check run_local stop_local smoke save deploy logs applog applog_grep ps backup restore clean need_host need_pass
 
-## check: typecheck and the whole test suite.
+## check: typecheck, build and the whole test suite. The build comes before the tests:
+##        one of them fetches the built page from a test server.
 check:
 	npm run typecheck
+	npm run build
 	npm test
 
 ## build_docker: build the image locally, cross-built for the server arch.
@@ -72,19 +81,19 @@ save: build_docker
 	@du -h $(LOCAL_TARBALL)
 
 need_host:
-	@test -n "$(PROD_HOST)" || { echo "Set PROD_HOST=<server ip>"; exit 1; }
+	@test -n "$(PROD_HOST)" || { echo "Set PROD_HOST=<server ip> in .env"; exit 1; }
 
 need_pass:
-	@test -n "$$GENEALOGY_USER" || { echo "Set GENEALOGY_USER=<login for the tree>"; exit 1; }
-	@test -n "$$GENEALOGY_PASS" || { echo "Set GENEALOGY_PASS=<password for the tree>"; exit 1; }
+	@test -n "$$GENEALOGY_USER" || { echo "Set GENEALOGY_USER=<login for the tree> in .env"; exit 1; }
+	@test -n "$$GENEALOGY_PASS" || { echo "Set GENEALOGY_PASS=<password for the tree> in .env"; exit 1; }
 
 ## deploy: ship the image to the server and (re)start the container.
-##         The tree lives in the container's memory, so a deploy wipes it:
-##         take the archive first, put it back afterwards.
-deploy: need_host need_pass save
-	$(SSH) "mkdir -p $(REMOTE_DIR)/logs"
-	# the container runs as uid 1000, so the bind-mounted log dir must be its own
-	$(SSH) "chown -R 1000:1000 $(REMOTE_DIR)/logs"
+##         The tree lives in $(REMOTE_DIR)/data on the server and survives it.
+##         Nothing ships while `make check` is red.
+deploy: need_host need_pass check save
+	$(SSH) "mkdir -p $(REMOTE_DIR)/logs $(REMOTE_DIR)/data"
+	# the container runs as uid 1000, so the bind-mounted folders must be its own
+	$(SSH) "chown -R 1000:1000 $(REMOTE_DIR)/logs $(REMOTE_DIR)/data"
 	# the password goes as a file with mode 600, not on a command line where it
 	# would show up in the process list and in the shell history
 	@umask 077 && printf 'GENEALOGY_USER=%s\nGENEALOGY_PASS=%s\nGENEALOGY_PORT=%s\nGENEALOGY_ADMIN_USER=%s\nGENEALOGY_ADMIN_PASS=%s\n' \
@@ -124,8 +133,8 @@ ps: need_host
 	$(SSH) "docker stats --no-stream genealogy_app"
 	$(SSH) "df -h / && docker system df"
 
-## backup: take the tree off the server as an archive. The tree is in memory,
-##         so this is the only copy that survives a restart.
+## backup: take the tree off the server as an archive, photos included: the copy
+##         that survives losing the server itself.
 backup: need_host need_pass
 	@mkdir -p $(BACKUP_DIR)
 	curl -fsS -u "$$GENEALOGY_USER:$$GENEALOGY_PASS" \
@@ -134,6 +143,15 @@ backup: need_host need_pass
 	@ls -lh $(BACKUP_DIR) | tail -5
 	# keep the five newest, the rest are just clutter
 	@ls -1t $(BACKUP_DIR)/persons_*.zip 2>/dev/null | tail -n +6 | xargs -r rm -f
+
+## restore: put an archive into the server. It is taken only while the server's
+##          folder holds no tree (a first deploy, or after losing the data); over a
+##          tree it is refused with 409. FILE=backups/<file>.zip
+restore: need_host need_pass
+	@test -n "$(FILE)" || { echo "Set FILE=backups/<file>.zip"; exit 1; }
+	curl -fsS -u "$$GENEALOGY_USER:$$GENEALOGY_PASS" \
+		--data-binary @"$(FILE)" "http://$(PROD_HOST):$(PORT)/api/upload"
+	@echo
 
 ## clean: remove the local image and the saved tarball.
 clean:

@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { msg } from "../i18n.ts";
+import { photoUrl, postPhoto } from "../io/api.ts";
+import { shrinkPhoto } from "../io/photo.ts";
 import { yearTag } from "../model/dates.ts";
 import { kinOf, type KinRow } from "../model/kin.ts";
 import { colorOf } from "../model/names.ts";
-import { DateField, Seg } from "./bits.tsx";
+import { DateField, Seg, useNameField } from "./bits.tsx";
 import type { Relation } from "../model/store.ts";
 import { childrenOf, parentsOf, partnersOf } from "../model/tree.ts";
 import type { Person, Sex } from "../model/types.ts";
@@ -13,6 +16,8 @@ interface Props {
   onAddRelation: (mode: Relation) => void;
   onPick: (mode: Relation) => void;
   onGoTo: (id: string) => void;
+  /** a server is there to keep photos */
+  photos: boolean;
 }
 
 const splitList = (v: string): string[] =>
@@ -21,21 +26,85 @@ const splitList = (v: string): string[] =>
     .map((x) => x.trim())
     .filter(Boolean);
 
+/**
+ * The text of a field. It is kept apart from the person, since typing passes through
+ * states the person never stores (a trailing space, "a,"); `read` is what the person
+ * stores of it. When the person's value changes from elsewhere — an undo — the field
+ * takes it up instead of holding on to what was typed.
+ */
+function useText(value: string, read: (text: string) => string): [string, (text: string) => void] {
+  const [text, setText] = useState(value);
+  const [seen, setSeen] = useState(value);
+  if (value !== seen) {
+    setSeen(value);
+    if (read(text) !== value) setText(value);
+  }
+  return [text, setText];
+}
+
+const same = (v: string) => v;
+const trim = (v: string) => v.trim();
+const listText = (v: string) => splitList(v).join(", ");
+
 const SEX: { v: Sex; t: string }[] = [
   { v: "m", t: "ed.male" },
   { v: "f", t: "ed.female" },
   { v: "u", t: "ed.unknown" },
 ];
 
-export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
+/** The person's photo, and the buttons to give, change or take it away. */
+function Photo({ p }: { p: Person }) {
+  const { d, t } = useApp();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    let out: { photo: string } | { error: string };
+    try {
+      out = await postPhoto(fetch, await shrinkPhoto(file));
+    } catch (e) {
+      out = { error: String((e as Error)?.message ?? e) };
+    }
+    setBusy(false);
+    if ("error" in out) d({ type: "notice", msg: msg("notice.photoFailed", { detail: out.error }) });
+    else d({ type: "update", id: p.id, patch: { photo: out.photo } });
+  };
+
+  return (
+    <div className="photo-row">
+      {p.photo ? <img className="photo-big" src={photoUrl(p.photo)} alt="" /> : <div className="photo-big none" />}
+      <div className="photo-btns">
+        <button disabled={busy} onClick={() => input.current?.click()}>
+          {busy ? t("ed.photoBusy") : p.photo ? t("ed.photoChange") : t("ed.photoAdd")}
+        </button>
+        {p.photo && !busy && <button onClick={() => d({ type: "update", id: p.id, patch: { photo: "" } })}>{t("ed.photoRemove")}</button>}
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          void pick(e.target.files?.[0]);
+          e.target.value = ""; // the same file chosen again is a change too
+        }}
+      />
+    </div>
+  );
+}
+
+export function Editor({ p, onAddRelation, onPick, onGoTo, photos }: Props) {
   const { s, d, t, lang } = useApp();
-  const [name, setName] = useState(p.name);
-  const [maiden, setMaiden] = useState(p.maiden);
-  const [born, setBorn] = useState(p.born);
-  const [died, setDied] = useState(p.died);
-  const [alt, setAlt] = useState((p.alt || []).join(", "));
+  const [name, setName] = useText(p.name, same);
+  const [maiden, setMaiden] = useText(p.maiden, trim);
+  const [born, setBorn] = useText(p.born, trim);
+  const [died, setDied] = useText(p.died, trim);
+  const [alt, setAlt] = useText((p.alt || []).join(", "), listText);
 
   const set = (patch: Partial<Person>) => d({ type: "update", id: p.id, patch, quiet: true });
+  const nameField = useNameField();
 
   const parents = parentsOf(s.tree, p.id);
   const kids = childrenOf(s.tree, p.id);
@@ -60,10 +129,13 @@ export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
         {spouses.length ? " · " + t("ed.married", { n: spouses.length }) : ""}
       </p>
 
+      {photos && <Photo p={p} />}
+
       <input
         type="text"
         value={name}
         placeholder={t("pop.namePh")}
+        {...nameField}
         onChange={(e) => {
           setName(e.target.value);
           set({ name: e.target.value });
@@ -73,6 +145,7 @@ export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
         type="text"
         value={maiden}
         placeholder={t("ed.maidenPh")}
+        {...nameField}
         onChange={(e) => {
           setMaiden(e.target.value);
           set({ maiden: e.target.value.trim() });
@@ -100,6 +173,7 @@ export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
         type="text"
         value={alt}
         placeholder={t("ed.altPh")}
+        {...nameField}
         onChange={(e) => {
           setAlt(e.target.value);
           set({ alt: splitList(e.target.value) });

@@ -27,15 +27,22 @@ const RU: Record<string, string> = {
   "notice.fileFailed": "Не получилось прочитать файл",
   "notice.zipLoaded": "Из архива загружено людей: {n}",
   "notice.zipFailed": "Архив не загрузился: {detail}",
+  "notice.photoFailed": "Фото не загрузилось: {detail}",
+  "notice.saveFailed": "Не удалось сохранить — повторю через несколько секунд",
+  "notice.saved": "Сохранено",
+  "notice.restarted": "Сервер был перезапущен и пуст — древо из этой вкладки записано заново",
+  "notice.serverSilent": "Сервер не отвечает — правки сохраняются только в этом браузере",
   "confirm.delete": "Удалить «{name}» и все его связи?",
   "confirm.clear": "Убрать всех из древа — людей: {n}? Это увидят все, кто войдёт тем же паролем. Скачайте архив, если ещё не скачали.",
 
   "rail.intro": "Добавьте человека, выберите его на древе — и растите ветку стрелками.",
   "rail.add": "+ Добавить человека",
+  "rail.addShort": "+ Добавить",
   "rail.expand": "Развернуть",
   "rail.collapse": "Свернуть",
   "rail.hint": "Щёлкните по человеку на древе или в списке — откроются поля и стрелки «родитель», «ребёнок», «супруг».",
   "rail.search": "Найти человека",
+  "rail.clearSearch": "Очистить поиск",
   "rail.hiddenTitle": "Скрыт: срезан вверх. Вернуть — кнопкой «Вернуть всех» на холсте",
   "rail.hidden": "скрыт",
   "rail.nobodyFound": "Никого не нашлось.",
@@ -59,6 +66,8 @@ const RU: Record<string, string> = {
   "where.memory": "Древо живёт в памяти сервера. Скачайте архив: с перезапуском правки пропадут.",
   "where.recheck": "Проверить сервер заново",
   "where.reread": "Перечитать с диска",
+  "where.staleShort": "Сервер старой версии — правки не сохраняются",
+  "where.conflictShort": "Древо изменилось в другом месте — правки не сохраняются",
 
   "tool.timeline": "По годам",
   "tool.timelineTitle": "Ставить людей по году рождения",
@@ -72,6 +81,7 @@ const RU: Record<string, string> = {
   "tool.rearrangeTitle": "Забыть, куда вы перетаскивали карточки, и разложить древо заново",
   "tool.zoomOut": "Отдалить",
   "tool.zoomIn": "Приблизить",
+  "tool.more": "Ещё",
 
   "pick.child": "Выберите ребёнка для",
   "pick.parent": "Выберите родителя для",
@@ -147,6 +157,10 @@ const RU: Record<string, string> = {
   "ed.hideAboveTitle":
     "Срезать древо вверх: спрятать предков этого человека и всё, что растёт от них, кроме него самого, его семьи и потомков",
   "ed.delete": "Удалить человека",
+  "ed.photoAdd": "Добавить фото",
+  "ed.photoChange": "Заменить фото",
+  "ed.photoRemove": "Убрать фото",
+  "ed.photoBusy": "Загружается…",
 
   "em.remove": "Убрать связь",
   "em.parentsOf": "Родители: {name}",
@@ -184,6 +198,7 @@ const RU: Record<string, string> = {
   "reason.selfSpouse": "Человек не может быть супругом самому себе",
   "reason.selfSibling": "Человек не может быть братом самому себе",
   "reason.lineage": "Они уже родитель и потомок: {a} и {b}",
+  "reason.spouseLineage": "Так супруги {a} и {b} оказались бы родителем и потомком",
 
   "kin.father": "отец",
   "kin.mother": "мать",
@@ -200,6 +215,7 @@ const RU: Record<string, string> = {
 
   "date.born": "р. ",
   "date.died": "† ",
+  "card.maiden": "ур. {name}",
 };
 
 const EN: Record<string, string> = {
@@ -215,15 +231,22 @@ const EN: Record<string, string> = {
   "notice.fileFailed": "Could not read the file",
   "notice.zipLoaded": "Loaded {n} people from the archive",
   "notice.zipFailed": "The archive did not load: {detail}",
+  "notice.photoFailed": "The photo did not load: {detail}",
+  "notice.saveFailed": "Could not save — trying again in a few seconds",
+  "notice.saved": "Saved",
+  "notice.restarted": "The server restarted empty — the tree from this tab was written back",
+  "notice.serverSilent": "The server does not answer — changes are kept in this browser only",
   "confirm.delete": "Delete “{name}” and all their links?",
   "confirm.clear": "Remove everyone from the tree — {n} people? Everyone who logs in with the same password will see this. Download the archive first if you have not.",
 
   "rail.intro": "Add a person, select them on the tree, and grow the branch with the arrows.",
   "rail.add": "+ Add person",
+  "rail.addShort": "+ Add",
   "rail.expand": "Expand",
   "rail.collapse": "Collapse",
   "rail.hint": "Click a person on the tree or in the list to open their fields and the “parent”, “child” and “spouse” arrows.",
   "rail.search": "Find a person",
+  "rail.clearSearch": "Clear search",
   "rail.hiddenTitle": "Hidden: the tree was cut above them. Use “Show everyone” on the canvas to bring them back",
   "rail.hidden": "hidden",
   "rail.nobodyFound": "Nobody found.",
@@ -247,6 +270,8 @@ const EN: Record<string, string> = {
   "where.memory": "The tree lives in the server's memory. Download the archive: a restart loses your edits.",
   "where.recheck": "Check the server again",
   "where.reread": "Reload from disk",
+  "where.staleShort": "An older server — edits are not saved",
+  "where.conflictShort": "Changed elsewhere — edits are not saved",
 
   "tool.timeline": "By year",
   "tool.timelineTitle": "Place people by year of birth",
@@ -260,6 +285,7 @@ const EN: Record<string, string> = {
   "tool.rearrangeTitle": "Forget where you dragged cards and lay the tree out again",
   "tool.zoomOut": "Zoom out",
   "tool.zoomIn": "Zoom in",
+  "tool.more": "More",
 
   "pick.child": "Pick the child of",
   "pick.parent": "Pick a parent of",
@@ -334,6 +360,10 @@ const EN: Record<string, string> = {
   "ed.hideAboveTitle":
     "Cut the tree above: hide this person's ancestors and everything that grows from them, except the person, their spouse and descendants",
   "ed.delete": "Delete person",
+  "ed.photoAdd": "Add photo",
+  "ed.photoChange": "Change photo",
+  "ed.photoRemove": "Remove photo",
+  "ed.photoBusy": "Uploading…",
 
   "em.remove": "Remove link",
   "em.parentsOf": "Parents of {name}",
@@ -371,6 +401,7 @@ const EN: Record<string, string> = {
   "reason.selfSpouse": "A person cannot be their own spouse",
   "reason.selfSibling": "A person cannot be their own sibling",
   "reason.lineage": "They are already parent and descendant: {a} and {b}",
+  "reason.spouseLineage": "That would make the spouses {a} and {b} parent and descendant",
 
   "kin.father": "father",
   "kin.mother": "mother",
@@ -387,6 +418,7 @@ const EN: Record<string, string> = {
 
   "date.born": "b. ",
   "date.died": "d. ",
+  "card.maiden": "née {name}",
 };
 
 const DICT: Record<Lang, Record<string, string>> = { ru: RU, en: EN };

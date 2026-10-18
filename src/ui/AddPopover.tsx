@@ -4,13 +4,13 @@ import { matches, norm } from "../model/names.ts";
 import type { Relation } from "../model/store.ts";
 import type { PersonSpec } from "../model/tree.ts";
 import type { Person, Sex } from "../model/types.ts";
-import { DateField, PersonLine, Seg, useDismiss } from "./bits.tsx";
+import { DateField, PersonLine, Seg, useDismiss, useNameField } from "./bits.tsx";
 import { useApp } from "./ctx.ts";
 
 export interface PopSpot {
-  /** coordinates inside the canvas */
-  x: number;
-  y: number;
+  /** coordinates inside the canvas; none on a phone, where the stylesheet places the window */
+  x?: number;
+  y?: number;
   mode: Relation | null;
   anchor: string | null;
 }
@@ -55,6 +55,7 @@ export function AddPopover({ spot, people, onCreate, onExisting, onClose }: Prop
   const [cursor, setCursor] = useState(-1);
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const nameField = useNameField();
 
   useEffect(() => {
     input.current?.focus();
@@ -152,6 +153,7 @@ export function AddPopover({ spot, people, onCreate, onExisting, onClose }: Prop
         value={text}
         placeholder={t("pop.namePh")}
         autoComplete="off"
+        {...nameField}
         onChange={(e) => {
           setText(e.target.value);
           setCursor(-1);

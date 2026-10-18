@@ -5,6 +5,7 @@ import { addPair, addPerson, link, normalize } from "../model/tree.ts";
 import type { TreeState } from "../model/types.ts";
 import { layout } from "./layout.ts";
 import { NODE_W } from "./measure.ts";
+import { nodeCards } from "../testing/cards.ts";
 
 const real = (): TreeState =>
   normalize(JSON.parse(readFileSync(new URL("../data/family.json", import.meta.url), "utf8")));
@@ -59,7 +60,7 @@ test("parents over the middle of the children, each family's children under thei
   const olegKids = ["Коля", "Толя"].map((n) => addPerson(s, { name: n + " Олегович" }));
   for (const c of olegKids) link(s, kids[2], c);
 
-  const { pos } = layout(s);
+  const { pos } = layout(s, nodeCards());
   assert.deepEqual(overlaps(pos), []);
   assert.deepEqual(offCentre(s, pos), []);
   // the brothers run left to right in the order entered, the grandchildren under their own father rather than their uncle
@@ -94,7 +95,7 @@ test("in-laws stand over their own child, while the brothers and their children 
   link(s, raisa, maria);
   link(s, stepan, maria);
 
-  const { pos, level } = layout(s);
+  const { pos, level } = layout(s, nodeCards());
   assert.deepEqual(overlaps(pos), []);
   assert.deepEqual(offCentre(s, pos), []);
   assert.equal(level[husbandsFather], level[grandad], "the in-laws are in the row of the parents");
@@ -120,7 +121,7 @@ test("an only child under its parents matters more than the wife's parents exact
     link(s, wifesFather, c);
     link(s, wifesMother, c);
   }
-  const { pos, level } = layout(s);
+  const { pos, level } = layout(s, nodeCards());
   assert.deepEqual(overlaps(pos), []);
   assert.equal(level[wifesFather], level[father], "the wife's father is in the row of the husband's parents");
   assert.ok(Math.abs(pos[son].x - (pos[father].x + pos[mother].x) / 2) < 1, "the son is exactly under his parents");
@@ -133,7 +134,7 @@ test("an only child under its parents matters more than the wife's parents exact
 
 test("on the original data every family is over the middle of its children, bar one honest dispute", () => {
   const s = real();
-  const { pos } = layout(s);
+  const { pos } = layout(s, nodeCards());
   assert.deepEqual(overlaps(pos), []);
   // one person has two families with an only child in each — both cannot stand exactly
   // under their own couple, so one of the lines goes stepped
@@ -152,7 +153,7 @@ test("a mother with two husbands: both only children hang vertically, the husban
   link(s, husband1, daughter1);
   link(s, mother, daughter2);
   link(s, husband2, daughter2);
-  const { pos } = layout(s);
+  const { pos } = layout(s, nodeCards());
   assert.deepEqual(overlaps(pos), []);
   assert.deepEqual(offCentre(s, pos), []);
   // the husbands on opposite sides of the mother, each no further than the normal gap

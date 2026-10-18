@@ -5,8 +5,9 @@ import { useDismiss } from "./bits.tsx";
 import { useApp } from "./ctx.ts";
 
 export interface EdgeSpot {
-  x: number;
-  y: number;
+  /** coordinates inside the canvas; none on a phone, where the stylesheet places the menu */
+  x?: number;
+  y?: number;
   ref: EdgeRef;
 }
 

@@ -1,5 +1,5 @@
 import type { Timeline } from "../layout/timeline.ts";
-import type { View } from "./view.ts";
+import type { View } from "./board/view.ts";
 
 const STEPS = [5, 10, 20, 25, 50, 100, 200];
 

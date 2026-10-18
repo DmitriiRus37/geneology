@@ -2,10 +2,11 @@
 # built locally (or in CI) and shipped to the server as a tarball, so the server
 # never compiles anything and keeps no toolchain.
 #
-# There is no database and no volume on purpose. The server holds the tree in
-# memory: it arrives as a zip through "Upload archive" and leaves through
-# "Download archive". Nothing of yours is left on someone else's disk, and a
-# restart is a clean slate — so take the archive before you stop the container.
+# There is no database: the tree is a folder of JSON cards (and photos/) in
+# ./data next to this file, mounted into the container, so a restart, a reboot or
+# a deploy keeps it. The first tree goes in as a zip through "Upload archive",
+# which a folder accepts only while it is empty; "Download archive" (make backup)
+# takes a copy off the server.
 services:
   app:
     image: genealogy_app:latest
@@ -28,6 +29,8 @@ services:
     # addresses — never the tree, never the password.
     volumes:
       - ./logs:/app/logs
+      # the tree itself: back it up with `make backup`, never delete it to "reset"
+      - ./data:/app/data
     # Measured: ~19 MB idle, ~58 MB peak under load. 256 MB is roughly fourfold
     # headroom and still small enough to sit next to other services.
     deploy:

@@ -19,7 +19,14 @@ html,
 body,
 #root {
   height: 100%;
+  /* On a phone the address bar slides in and out, and 100% of the window leaves
+     the bottom of the app under it. dvh follows what is actually visible. */
+  height: 100dvh;
   margin: 0;
+}
+/* the blue flash Android paints over every tap */
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -198,6 +205,29 @@ textarea:focus-visible {
   margin: 10px 0 0;
 }
 
+.photo-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.photo-big {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--panel-line);
+}
+.photo-big.none {
+  background: var(--panel-2);
+}
+.photo-btns {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
 #editor input[type="text"] {
   width: 100%;
   background: var(--panel-2);
@@ -379,6 +409,11 @@ svg#tree.picking {
 }
 .node circle.chip {
   stroke: none;
+}
+.node circle.photo {
+  fill: #e6ebf0;
+  stroke: #c3cdd8;
+  stroke-width: 1;
 }
 .node text.mark {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
@@ -610,6 +645,22 @@ svg#tree.picking {
   accent-color: var(--brass);
 }
 
+/* Three pieces exist only on a narrow screen: the grab bar of the sheet, the ruler
+   that tells it how far up it may go, and the "more" button that unfolds the bar
+   above the canvas. On a desktop the bar shows everything at once and none of them
+   is needed. */
+.grab,
+.ruler,
+#toolsMore {
+  display: none;
+}
+
+/* a card a finger has rested on long enough to pick it up: it is about to be carried */
+.node.lift rect.box {
+  stroke: var(--brass);
+  stroke-width: 3;
+}
+
 #blank {
   position: absolute;
   inset: 0;
@@ -782,52 +833,203 @@ svg#tree.picking {
   white-space: nowrap;
 }
 
-@media (max-width: 860px) {
+/* ---------- the phone ----------
+
+   A phone screen holds one thing at a time, and that thing is the tree. The canvas
+   takes the whole window; the side panel lies over it as a sheet pulled up by its
+   grab bar, at any of three heights. Everything below is inside this query: the
+   desktop layout above is untouched.
+
+   The second half of the query is the same phone held sideways: 874 points wide is
+   over the breakpoint, and the desktop layout there squeezed the list of people out
+   of existence between the head and the footer. Short and no wider than a phone is
+   a phone. */
+@media (max-width: 860px), (max-height: 500px) and (max-width: 1000px) {
   #app {
-    flex-direction: column;
-  }
-  #rail {
-    width: 100%;
-    flex: 0 0 auto;
-    max-height: 52%;
-    border-right: 0;
-    border-bottom: 1px solid #0f151d;
-  }
-  #rail.min .rail-scroll,
-  #rail.min .rail-foot {
-    display: none;
-  }
-  #rail.min {
-    max-height: none;
-  }
-  #railToggle {
-    display: inline-block;
-    position: absolute;
-    right: 12px;
-    top: 12px;
-  }
-  .rail-head {
-    padding-right: 110px;
-  }
-  #people {
-    max-height: 26vh;
+    display: block;
+    position: relative;
   }
   #board {
-    flex: 1;
+    position: absolute;
+    inset: 0;
   }
-
-  /* On a phone the footer used to grow until the search box and the list of
-     people had no height left at all — the one thing the panel is for. It now
-     scrolls within its own bounds and the list keeps a floor. */
-  .rail-scroll {
-    min-height: 30vh;
-  }
-  .rail-foot {
-    padding: 8px 10px;
-    gap: 2px;
-    max-height: 30vh;
+  /* ---------- the panel as a sheet ---------- */
+  #rail {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    width: auto;
+    flex: none;
+    height: auto; /* the real height is set from the sheet state, in pixels */
+    max-height: none;
+    border-right: 0;
+    border-top: 1px solid #0f151d;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 28px rgba(10, 16, 24, 0.4);
+    /* the home indicator: the sheet ends above it, and the pixel height counts it in */
+    padding-bottom: env(safe-area-inset-bottom);
+    /* The sheet scrolls as one piece. A scroller inside a scroller inside a scroller
+       is what made the phone version unusable: the footer grew, the list of people
+       shrank to three rows, and neither could be reached without fighting the other. */
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* and it does nothing but scroll up and down: a pinch or a double tap on it would
+       zoom the whole page, bars and all, with no way back but pinching out */
+    touch-action: pan-y;
+    transition:
+      height 0.22s ease,
+      transform 0.22s ease;
+  }
+  /* An add card or the menu of a line is open: the next taps are for it, so the sheet
+     steps out of the way rather than show through underneath, and comes back exactly
+     as it was once the card is gone. */
+  #app:has(#board > .pop) #rail {
+    transform: translateY(calc(100% + 40px)); /* the shadow goes too */
+  }
+  #rail.dragging {
+    transition: none; /* while the finger is on the bar the height follows it exactly */
+  }
+  /* A field was tapped and the keyboard is coming up. The sheet jumps to full height
+     at once: a sheet still in the middle of its animation is where Safari measures
+     the field, and it would scroll the whole page to get it clear of the keyboard. */
+  #rail:focus-within {
+    transition: none;
+  }
+  /* the strip at the top the sheet leaves to the bar over the canvas: the bar's top,
+     plus its height (44 for the buttons, 2 × 5 padding, 2 × 1 border), plus a gap */
+  .ruler {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: calc(max(10px, env(safe-area-inset-top)) + 66px);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  /* pulled all the way down: only the head is left, and nothing below it can be
+     scrolled to or tabbed into */
+  #rail.shut .rail-scroll,
+  #rail.shut .rail-foot {
+    display: none;
+  }
+
+  /* the grab bar: drag it to any of the three heights, tap it to open and close */
+  .grab {
+    display: block;
+    flex: 0 0 100%;
+    padding: 10px 0 12px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .grab span {
+    display: block;
+    width: 38px;
+    height: 4px;
+    margin: 0 auto;
+    border-radius: 2px;
+    background: #4a5866;
+  }
+
+  /* The head is what stays on screen when the sheet is down, and what stays at the
+     top of it when it is up, so it carries the two things worth a single tap: finding
+     someone and adding someone. */
+  .rail-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--panel);
+    border-radius: 14px 14px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 10px;
+    padding: 0 max(14px, env(safe-area-inset-right)) 12px max(14px, env(safe-area-inset-left));
+  }
+  .find {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .find #search {
+    height: 44px;
+    padding-right: 40px; /* room for the × */
+  }
+  .find .clear {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--on-dark-soft);
+    font-size: 20px;
+    line-height: 1;
+  }
+  .rail-head .add-big {
+    flex: 0 0 auto;
+    width: auto;
+    height: 44px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  /* writing is stopped: one row under the search says so and carries the way out,
+     short, since it stands in what the lowered sheet shows; the footer keeps the
+     longer wording */
+  .head-stuck {
+    flex: 0 0 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .head-stuck .where {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+  }
+  .head-stuck button {
+    flex: 0 0 auto;
+    padding: 0 12px;
+    font-size: 13px;
+  }
+  /* The title, the intro and the onboarding hint give their room to the list: the
+     tab and the home screen already carry the name, and by the time the tree is on
+     screen the hint has done its job. */
+  .rail-head h1,
+  .rail-head p,
+  .block.hint {
+    display: none;
+  }
+  /* the search moved up into the head, so the list starts the block */
+  #rail .block > #people:first-child {
+    margin-top: 0;
+  }
+
+  /* one scroll for the whole sheet: the head above, then the person, then the list,
+     then the buttons */
+  .rail-scroll {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+  #people {
+    max-height: none;
+    overflow: visible;
+  }
+  .rail-foot {
+    max-height: none;
+    overflow: visible;
+    gap: 4px;
+    padding: 10px max(10px, env(safe-area-inset-right)) 10px max(10px, env(safe-area-inset-left));
+  }
+  .block {
+    padding: 14px max(14px, env(safe-area-inset-right)) 14px max(14px, env(safe-area-inset-left));
   }
   .fgroup {
     padding-bottom: 4px;
@@ -836,13 +1038,6 @@ svg#tree.picking {
   .rail-foot button.quiet {
     padding: 7px 8px;
   }
-  /* the intro has done its job by the time the tree is on screen */
-  .rail-head p {
-    display: none;
-  }
-  .rail-head {
-    padding: 12px 14px 10px;
-  }
   /* a long folder path is not worth three lines of a phone screen */
   .where {
     display: -webkit-box;
@@ -850,10 +1045,144 @@ svg#tree.picking {
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-}
-@media (min-width: 861px) {
-  #railToggle {
+
+  /* A finger is not a mouse pointer: 44 px is what Apple asks for and 48 what
+     Android does, and every button here was 32. The sheet scrolls, so the extra
+     height costs the list nothing. */
+  #rail button,
+  #tools button {
+    min-height: 44px;
+  }
+  #people li {
+    padding: 11px 8px;
+  }
+  /* the little × that cuts one link: inline in a line of text, so it stays small */
+  .kin .cut {
+    min-height: 32px;
+    min-width: 32px;
+  }
+
+  /* Anything under 16px makes iOS Safari zoom the page the moment the field is
+     focused, and it never zooms back out. */
+  #search,
+  #editor input[type="text"],
+  .pop input {
+    font-size: 16px;
+  }
+
+  /* ---------- the bar over the canvas ---------- */
+  /* It moves to the top: the bottom belongs to the sheet now. */
+  #tools {
+    top: max(10px, env(safe-area-inset-top));
+    bottom: auto;
+    right: max(10px, env(safe-area-inset-right));
+    max-width: calc(100vw - 20px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  }
+  #tools button {
+    padding: 8px 9px;
+    font-size: 12.5px;
+  }
+  #toolsMore {
+    display: inline-block;
+  }
+  /* Folded, the bar keeps only what is reached for on a tree that does not fit the
+     screen: show everything, nearer, further. The two settings and "Rearrange" would
+     double its width for something wanted once an evening, so they wait behind "more",
+     and opening it turns the bar into a column. */
+  #tools .sw,
+  #tools .rng,
+  #tools .rearrange {
     display: none;
+  }
+  #tools.more {
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 212px;
+  }
+  #tools.more .sw,
+  #tools.more .rng {
+    display: inline-flex;
+    min-height: 44px;
+  }
+  #tools.more .rng {
+    justify-content: space-between;
+  }
+  #tools.more .rearrange {
+    display: block;
+  }
+  #tools.more .rng input {
+    width: 108px;
+  }
+  /* unfolded it is a menu, and a menu reads from the left */
+  #tools.more button {
+    text-align: left;
+  }
+  /* the button that opened the column stays on top of it, within reach of the thumb
+     that just pressed it */
+  #tools.more #toolsMore {
+    order: -1;
+  }
+  /* While a person is being picked, the line at the top says what to do. The canvas
+     controls would sit on top of it, and none of them is needed for one tap. */
+  svg#tree.picking ~ #tools {
+    display: none;
+  }
+
+  #pickbar {
+    top: max(10px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    transform: none;
+    max-width: none;
+  }
+  /* Above the sheet, whatever its height, but never up under the bar at the top: with
+     the sheet all the way up the toast sits over its head for the two seconds it lasts. */
+  #toast {
+    bottom: min(calc(var(--sheet, 0px) + 14px), calc(100% - max(10px, env(safe-area-inset-top)) - 108px));
+    max-width: calc(100vw - 32px);
+    z-index: 15;
+  }
+  /* a double tap on a button is two taps, not a zoom of the page */
+  #tools,
+  #pickbar,
+  .pop {
+    touch-action: manipulation;
+  }
+
+  /* Both popovers are placed by hand beside whatever was clicked; a phone has no
+     room for that — the add window was cut off by the canvas it was drawn inside.
+     They become a card at the top of the screen, where the keyboard cannot reach
+     them. On a phone they get no coordinates at all: this is all that places them. */
+  .pop {
+    position: fixed;
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    top: max(10px, env(safe-area-inset-top));
+    bottom: auto;
+    width: auto;
+    max-height: 72dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 20;
+  }
+  .pop .choice button,
+  .pop .row button {
+    min-height: 44px;
+  }
+  .sugg,
+  .edge-pop .cuts {
+    max-height: none;
+  }
+}
+/* ---------- a finger, on any screen ----------
+   A finger resting on a card is how a card gets picked up, and iOS answers a long
+   press with the text magnifier and a copy callout over the canvas. A mouse never
+   sees these rules. */
+@media (pointer: coarse) {
+  svg#tree {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {

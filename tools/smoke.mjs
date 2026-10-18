@@ -3,9 +3,9 @@
  * `npm test`: it does not touch the layout, it answers one question only, "is
  * the thing that was just deployed actually alive and complete".
  *
- * It never writes to a store that keeps people on disk: the archive round trip
- * runs only against a server in memory mode, and even there it puts back exactly
- * what it took.
+ * It never changes a tree: the archive round trip runs only against a server in
+ * memory mode, and even there it puts back exactly what it took. A folder on disk
+ * refuses an archive while it holds a tree, and an empty archive is refused anywhere.
  *
  *   node tools/smoke.mjs http://127.0.0.1:5179
  *   node tools/smoke.mjs https://example.org user pass
@@ -60,9 +60,9 @@ const zip = Buffer.from(await dl.arrayBuffer());
 check(dl.status === 200 && zip.length > 0, "the archive downloads", zip.length + " bytes");
 check(zip.subarray(0, 2).toString() === "PK", "the archive really is a zip");
 
-if (tree.store !== "memory") {
+if (people && tree.store !== "memory") {
   const up = await get("/api/upload", { method: "POST", body: zip });
-  check(up.status === 409, "uploading into a store on disk is refused", "status " + up.status);
+  check(up.status === 409, "uploading over a tree on disk is refused", "status " + up.status);
 } else if (people) {
   const up = await get("/api/upload", { method: "POST", body: zip });
   const body = await up.json();
@@ -75,10 +75,8 @@ if (tree.store !== "memory") {
   check(empty.status === 400, "nobody has opened it yet: an empty archive is refused", "status " + empty.status);
 }
 
-if (tree.store === "memory") {
-  const junk = await get("/api/upload", { method: "POST", body: Buffer.from("not an archive") });
-  check(junk.status === 400, "junk instead of an archive is refused with 400", "status " + junk.status);
-}
+const junk = await get("/api/upload", { method: "POST", body: Buffer.from("not an archive") });
+check(junk.status === 400, "junk instead of an archive is refused with 400", "status " + junk.status);
 
 console.log(failed ? "\n" + failed + " check(s) FAILED" : "\nall checks passed");
 process.exit(failed ? 1 : 0);

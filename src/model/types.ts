@@ -13,6 +13,13 @@ export interface Person {
   /** the pinned position after a drag */
   fx?: number;
   fy?: number;
+  /** the name of the person's photo on the server (`okPhoto`); absent or "" for none */
+  photo?: string;
+  /**
+   * The fields of the stored card the app does not know, as they were: they travel with
+   * the person untouched and are written back into the card on the next save.
+   */
+  extra?: Record<string, unknown>;
 }
 
 export interface Link {

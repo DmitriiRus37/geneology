@@ -1,7 +1,8 @@
 import { msg, type Msg } from "../i18n.ts";
 import { normalizeDateInput, splitRange } from "./dates.ts";
 import { guessSex } from "./names.ts";
-import { emptyState, isPair, otherIn, type Pair, type Person, type Sex, type TreeState } from "./types.ts";
+import { okId, okPhoto, PERSON_FIELDS } from "./cards.ts";
+import { emptyState, isPair, otherIn, pairKey, type Pair, type Person, type Sex, type TreeState } from "./types.ts";
 
 export const clone = <T,>(v: T): T => structuredClone(v);
 
@@ -69,20 +70,51 @@ export function link(state: TreeState, parentId: string, childId: string): LinkR
   if (isDescendant(state, childId, parentId)) {
     return { ok: false, reason: msg("reason.loop", { name: state.people[parentId].name }) };
   }
+  // The new link puts everyone above the parent over everyone below the child. A married
+  // couple split between the two would become parent and descendant, which addPair refuses.
+  const up = lineOf(parentId, (x) => parentsOf(state, x));
+  const down = lineOf(childId, (x) => childrenOf(state, x));
+  const clash = state.pairs.find((p) => (up.has(p.a) && down.has(p.b)) || (up.has(p.b) && down.has(p.a)));
+  if (clash) {
+    const name = (id: string) => state.people[id]?.name ?? "?";
+    return { ok: false, reason: msg("reason.spouseLineage", { a: name(clash.a), b: name(clash.b) }) };
+  }
   state.links.push({ parent: parentId, child: childId });
   return { ok: true };
+}
+
+/** `id` and everyone reached from it by `step`. */
+function lineOf(id: string, step: (x: string) => string[]): Set<string> {
+  const out = new Set([id]);
+  const queue = [id];
+  while (queue.length) {
+    for (const y of step(queue.pop() as string)) {
+      if (!out.has(y)) {
+        out.add(y);
+        queue.push(y);
+      }
+    }
+  }
+  return out;
 }
 
 export type PairResult = { ok: true; already?: boolean } | { ok: false; reason: Msg };
 
 const SAME_SEX = { m: "reason.bothMen", f: "reason.bothWomen" };
 
-/** Marriage. Same sex is refused; if the sex of either one is unknown, we do not interfere. */
+/**
+ * Marriage. Refused between a person and anyone of their own line, up or down, and
+ * between two people of the same sex; if the sex of either one is unknown, we do not
+ * interfere.
+ */
 export function addPair(state: TreeState, a: string, b: string): PairResult {
   if (!a || !b || a === b) return { ok: false, reason: msg("reason.selfSpouse") };
   const pa = state.people[a];
   const pb = state.people[b];
   if (!pa || !pb) return { ok: false, reason: msg("reason.notFound") };
+  if (isDescendant(state, a, b) || isDescendant(state, b, a)) {
+    return { ok: false, reason: msg("reason.lineage", { a: pa.name, b: pb.name }) };
+  }
   if (pa.sex === pb.sex && (pa.sex === "m" || pa.sex === "f")) {
     return { ok: false, reason: msg(SAME_SEX[pa.sex], { a: pa.name, b: pb.name }) };
   }
@@ -217,17 +249,54 @@ export function clearPins(state: TreeState): void {
   }
 }
 
-/** Brings anything from a file or the store to a valid state. */
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** A list from a file; anything but an array is an empty one. */
+const listOf = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+const FIELDS = new Set(PERSON_FIELDS);
+
+/**
+ * A new id for someone whose own one the cards cannot keep (see `okId`): made of what
+ * can be kept of the old one plus a number, and never one that is already taken. The
+ * same tree always gets the same ids.
+ */
+function freshId(bad: string, taken: Set<string>): string {
+  const base = bad.replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 56) || "p";
+  for (let k = 1; ; k++) {
+    const id = base + "-" + k;
+    if (okId(id) && !taken.has(id)) return id;
+  }
+}
+
+/**
+ * Brings anything from a file or the store to a valid state. A container of the wrong
+ * type counts as empty; a person whose id the cards cannot keep gets a new one, and
+ * their links come along; a link, a marriage or a siblinghood written twice is kept
+ * once; the fields of a person the app does not know are kept in their `extra`.
+ */
 export function normalize(raw: unknown): TreeState {
-  const d = (raw || {}) as Record<string, unknown>;
+  const d = isObject(raw) ? raw : {};
   const s = emptyState();
   s.timeline = !!d.timeline;
   s.gap = typeof d.gap === "number" ? d.gap : 1;
   s.seq = typeof d.seq === "number" ? d.seq : 0;
 
-  const people = (d.people || {}) as Record<string, Record<string, unknown>>;
-  for (const id of Object.keys(people)) {
-    const p = people[id] || {};
+  const people = isObject(d.people) ? d.people : {};
+  const ids = Object.keys(people);
+  // old id -> the id in the tree; a Map, so that no id can be taken for a member of Object.prototype
+  const rename = new Map<string, string>();
+  const taken = new Set(ids.filter(okId));
+  for (const id of ids) {
+    const fresh = okId(id) ? id : freshId(id, taken);
+    taken.add(fresh);
+    rename.set(id, fresh);
+  }
+  const who = (v: unknown): string | undefined => (typeof v === "string" ? rename.get(v) : undefined);
+
+  for (const old of ids) {
+    const id = rename.get(old) as string;
+    const p = isObject(people[old]) ? people[old] : {};
     let born = typeof p.born === "string" ? p.born : "";
     let died = typeof p.died === "string" ? p.died : "";
     if (!born && !died && typeof p.years === "string") {
@@ -252,24 +321,40 @@ export function normalize(raw: unknown): TreeState {
       person.fx = p.fx;
       person.fy = p.fy;
     }
+    if (okPhoto(p.photo)) person.photo = p.photo;
+    // what the app does not know: from a card, its own fields; from the app's own state,
+    // the `extra` it already keeps
+    const extra = Object.entries(isObject(p.extra) ? p.extra : {})
+      .concat(Object.entries(p))
+      .filter(([k]) => !FIELDS.has(k));
+    if (extra.length) person.extra = Object.fromEntries(extra);
     s.people[id] = person;
     if (person.n > s.seq) s.seq = person.n;
   }
 
-  for (const l of (d.links || []) as { parent?: string; child?: string }[]) {
-    if (l && l.parent && l.child && s.people[l.parent] && s.people[l.child]) {
-      s.links.push({ parent: l.parent, child: l.child });
-    }
+  const seen = new Set<string>();
+  for (const l of listOf(d.links)) {
+    const parent = isObject(l) ? who(l.parent) : undefined;
+    const child = isObject(l) ? who(l.child) : undefined;
+    if (!parent || !child || seen.has(parent + ">" + child)) continue;
+    seen.add(parent + ">" + child);
+    s.links.push({ parent, child });
   }
   /** Pairs and explicit siblinghood lie in the file alike — and are read alike. */
-  const readPairs = (raw: unknown): Pair[] =>
-    ((raw || []) as { a?: string; b?: string }[])
-      .filter((p) => p && p.a && p.b && s.people[p.a] && s.people[p.b] && p.a !== p.b)
-      .map((p) => ({ a: p.a as string, b: p.b as string }));
+  const readPairs = (list: unknown): Pair[] => {
+    const out: Pair[] = [];
+    const keys = new Set<string>();
+    for (const p of listOf(list)) {
+      const a = isObject(p) ? who(p.a) : undefined;
+      const b = isObject(p) ? who(p.b) : undefined;
+      if (!a || !b || a === b || keys.has(pairKey(a, b))) continue;
+      keys.add(pairKey(a, b));
+      out.push({ a, b });
+    }
+    return out;
+  };
   s.pairs = readPairs(d.pairs);
   s.sibs = readPairs(d.sibs);
-  s.hidden = Array.isArray(d.hidden)
-    ? [...new Set((d.hidden as unknown[]).map(String).filter((id) => s.people[id]))]
-    : [];
+  s.hidden = [...new Set(listOf(d.hidden).map(who).filter((id) => id !== undefined))];
   return s;
 }

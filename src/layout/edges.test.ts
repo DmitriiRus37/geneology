@@ -4,6 +4,7 @@ import { addPerson, link, normalize } from "../model/tree.ts";
 import { edgeStats } from "./crossings.ts";
 import { computeEdges } from "./edges.ts";
 import { layout } from "./layout.ts";
+import { nodeCards } from "../testing/cards.ts";
 
 /**
  * A knot from a real tree: a family with three children and a couple with one child share
@@ -36,7 +37,7 @@ test("a bus whose source is inside another's span lies above that other one", ()
   pin(St, 926, 0);
   pin(m, 1300, 200);
 
-  const { pos, level } = layout(s);
+  const { pos, level } = layout(s, nodeCards());
   const items = computeEdges(s, pos, level, null);
   const rects = Object.keys(pos).map((id) => ({
     x1: pos[id].x - pos[id].w / 2,

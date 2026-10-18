@@ -1,0 +1,365 @@
+/**
+ * Every route, in the order they are tried: the open ones, then the guard, then
+ * the administrator's, then the API by path, then the app itself.
+ */
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { join } from "node:path";
+import { cardIdOf, okPhoto } from "../src/model/cards.ts";
+import type { AccessLog } from "./accesslog.ts";
+import { ipOf, type Attempts } from "./attempts.ts";
+import { COOKIE, type Auth, type Role } from "./auth.ts";
+import type { Geo } from "./geo.ts";
+import type { Throttle } from "./throttle.ts";
+import { json, MIME, page, readBody, readBuffer, redirect } from "./http.ts";
+import { ADMIN_ROWS, adminPage, loginPage, notForYou } from "./pages.ts";
+import { cardsOf, isJpeg, photosOf, type Tree } from "./tree.ts";
+import { zipRead, zipWrite } from "./zip.ts";
+
+export interface Services {
+  auth: Auth;
+  attempts: Attempts;
+  throttle: Throttle;
+  /** read the client's address from X-Forwarded-For (see `ipOf`) */
+  trustProxy: boolean;
+  geo: Geo;
+  tree: Tree;
+  accessLog: AccessLog;
+  /** the built app */
+  dist: string;
+  /** logins.jsonl, or "" when nothing is kept on disk */
+  loginsFile: string;
+  attemptsMax: number;
+}
+
+interface Ctx {
+  req: IncomingMessage;
+  res: ServerResponse;
+  role: Role | null;
+}
+
+/** Matched on the whole `req.url`; no method means any. */
+interface ExactRoute {
+  url: string;
+  method?: string;
+  run(ctx: Ctx): unknown;
+}
+
+/** Matched on the path, after the guard; with `prefix`, on its beginning. */
+interface PathRoute {
+  path: string;
+  prefix?: boolean;
+  method: string;
+  run(ctx: Ctx & { url: URL }): unknown;
+}
+
+/** A timestamp for the log line. */
+const now = () => new Date().toISOString().slice(11, 19);
+
+const home = (r: Role) => (r === "admin" ? "/admin" : "/");
+
+/**
+ * Sent with every answer. The app is one page with its script and styles inline, so
+ * those need 'unsafe-inline'; everything else comes from this server or nowhere.
+ * Photos are drawn from data: and blob: URLs on export, and no page may frame ours.
+ */
+export const SECURITY_HEADERS: Record<string, string> = {
+  "content-security-policy":
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; " +
+    "form-action 'self'; frame-ancestors 'none'",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+  "referrer-policy": "no-referrer",
+  "cross-origin-opener-policy": "same-origin",
+};
+
+/** Minutes, rounded up, for "try again in". */
+const minutes = (ms: number) => Math.max(1, Math.ceil(ms / 60e3));
+
+/** The app shrinks a photo before sending it: a few hundred kilobytes at most. */
+const MAX_PHOTO = 4e6;
+
+export function createHandler(s: Services): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
+  const { auth, attempts, throttle, geo, tree } = s;
+
+  const open: ExactRoute[] = [
+    // The only thing open without a password: "are you alive". No people and no
+    // count of them here — docker needs it to tell whether the container came up.
+    { url: "/api/health", run: ({ res }) => json(res, 200, { ok: true }) },
+
+    // The login form and the ticket it hands out. Open by definition: this is
+    // where one goes to stop being a stranger.
+    {
+      url: "/login",
+      method: "GET",
+      run: ({ res, role }) => (role ? redirect(res, home(role)) : page(res, 200, loginPage())),
+    },
+    {
+      url: "/login",
+      method: "POST",
+      async run({ req, res }) {
+        const form = new URLSearchParams(await readBody(req));
+        const name = form.get("u") ?? "";
+        const ip = ipOf(req, s.trustProxy);
+        // locked out: the password is not even looked at, so a guesser learns nothing
+        const wait = auth.guarded ? throttle.wait(ip) : 0;
+        if (wait) {
+          attempts.record(req, name, null);
+          res.setHeader("retry-after", String(Math.ceil(wait / 1000)));
+          return page(res, 429, loginPage({ locked: minutes(wait) }));
+        }
+        const got = auth.guarded ? auth.roleOfCreds(name, form.get("p") ?? "") : "admin";
+        attempts.record(req, name, got);
+        if (auth.guarded) {
+          if (got) throttle.pass(ip);
+          else throttle.fail(ip);
+        }
+        if (got) {
+          res.writeHead(303, {
+            location: home(got),
+            // no Secure flag: over plain http the browser would drop the cookie
+            "set-cookie": COOKIE + "=" + auth.ticket[got] + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800",
+          });
+          return res.end();
+        }
+        await new Promise((r) => setTimeout(r, 400)); // guessing should be slow
+        return page(res, 401, loginPage({ bad: true }));
+      },
+    },
+    {
+      url: "/logout",
+      run({ res }) {
+        res.writeHead(303, { location: "/login", "set-cookie": COOKIE + "=; Path=/; HttpOnly; Max-Age=0" });
+        return res.end();
+      },
+    },
+  ];
+
+  /** A browser is sent to the form; everything else keeps the plain 401 that curl, the backup and the smoke check expect. */
+  const refuse = ({ req, res }: Ctx) => {
+    if (String(req.headers.accept ?? "").includes("text/html")) return redirect(res, "/login");
+    res.writeHead(401, {
+      "www-authenticate": 'Basic realm="Genealogy", charset="UTF-8"',
+      "content-type": "text/plain; charset=utf-8",
+    });
+    return res.end("A password is needed\n");
+  };
+
+  // Only the administrator, and only when there is one at all.
+  const admin: ExactRoute[] = [
+    {
+      url: "/admin",
+      async run({ res, role }) {
+        if (role !== "admin") return page(res, 403, notForYou());
+        // only the addresses actually about to be drawn, and never at anyone else's
+        // request: a stranger signing in does not send their address anywhere
+        await geo.fill(attempts.list.slice(-ADMIN_ROWS).map((a) => a.ip));
+        return page(res, 200, adminPage({ attempts: attempts.list, max: s.attemptsMax, file: s.loginsFile, placeOf: geo.placeOf }));
+      },
+    },
+    {
+      url: "/admin/logins.jsonl",
+      run({ res, role }) {
+        if (role !== "admin") return page(res, 403, notForYou());
+        if (!s.loginsFile) return json(res, 404, { ok: false, error: "nothing is kept on disk: LOG_DIR is not set" });
+        let body;
+        try {
+          body = readFileSync(s.loginsFile);
+        } catch {
+          body = Buffer.alloc(0); // nobody has signed in yet
+        }
+        // plain text on purpose: one glance in the browser, no download needed
+        res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
+        return res.end(body);
+      },
+    },
+  ];
+
+  const api: PathRoute[] = [
+    {
+      path: "/api/tree",
+      method: "GET",
+      async run({ res, role }) {
+        const got = await tree.read();
+        return json(res, 200, {
+          ok: true,
+          tree: got,
+          dir: tree.store.where,
+          store: tree.store.kind,
+          guarded: auth.guarded,
+          role: role ?? "",
+          rev: await tree.store.rev(),
+        });
+      },
+    },
+    {
+      path: "/api/tree",
+      method: "POST",
+      async run({ req, res }) {
+        const body = JSON.parse((await readBody(req)) || "{}");
+        if (!body || typeof body.rev !== "string" || !body.tree) {
+          return json(res, 400, { ok: false, error: "a write without a version fingerprint is not accepted" });
+        }
+        const out = await tree.save(body.rev, body.tree);
+        if (out.conflict) {
+          console.log(now() + "  write refused: the tab had not seen the latest edits");
+          return json(res, 409, { ok: false, conflict: true, rev: out.rev });
+        }
+        if (out.written || out.removed) {
+          console.log(
+            new Date().toLocaleTimeString("ru-RU") +
+              "  people: " + out.total +
+              ", written: " + out.written +
+              (out.removed ? ", removed: " + out.removed : ""),
+          );
+        }
+        return json(res, 200, { ok: true, ...out });
+      },
+    },
+    // An archive of cards replaces the whole tree in memory. A folder on disk takes one
+    // only while it is empty — a first start or a restore: a tree that is there is the
+    // user's data, and we will not wipe it in one request.
+    {
+      path: "/api/upload",
+      method: "POST",
+      async run({ req, res }) {
+        let cards, photos;
+        try {
+          const entries = zipRead(await readBuffer(req));
+          cards = cardsOf(entries);
+          photos = photosOf(entries);
+        } catch (e) {
+          return json(res, 400, { ok: false, error: String(e && (e as Error).message) });
+        }
+        // the view alone, or only files that are nobody's card, would wipe the tree
+        if (![...cards].some(([name, text]) => cardIdOf(name, text))) {
+          return json(res, 400, { ok: false, error: "there are no cards (.json) in the archive" });
+        }
+        const out = await tree.upload(cards, photos);
+        if (!out) {
+          return json(res, 409, { ok: false, error: "the folder on disk already holds a tree — an archive is only taken into an empty one" });
+        }
+        const people = Object.keys(out.tree?.people ?? {}).length;
+        console.log(now() + "  archive loaded, people: " + people);
+        return json(res, 200, { ok: true, people, ...out });
+      },
+    },
+    // The same files that would lie in persons/, only as one archive: the cards, and
+    // the photos the cards show — a photo nobody shows any more stays behind.
+    {
+      path: "/api/download",
+      method: "GET",
+      async run({ res }) {
+        const files = new Map<string, string | Buffer>();
+        for (const [n, text] of await tree.files()) files.set("persons/" + n, text);
+        for (const [n, bytes] of await tree.photos()) files.set("persons/photos/" + n, bytes);
+        const zip = zipWrite(files);
+        res.writeHead(200, {
+          "content-type": "application/zip",
+          "content-disposition": 'attachment; filename="persons.zip"',
+          "content-length": zip.length,
+          "cache-control": "no-store",
+        });
+        return res.end(zip);
+      },
+    },
+    // A photo is a JPEG; it is named after its contents, so sending one twice stores it once.
+    {
+      path: "/api/photo",
+      method: "POST",
+      async run({ req, res }) {
+        let bytes;
+        try {
+          bytes = await readBuffer(req, MAX_PHOTO);
+        } catch (e) {
+          return json(res, 413, { ok: false, error: String(e && (e as Error).message) });
+        }
+        if (!isJpeg(bytes)) return json(res, 400, { ok: false, error: "a photo must be a JPEG" });
+        const photo = createHash("sha256").update(bytes).digest("hex").slice(0, 16) + ".jpg";
+        await tree.store.putPhoto(photo, bytes);
+        return json(res, 200, { ok: true, photo });
+      },
+    },
+    {
+      path: "/api/photo/",
+      prefix: true,
+      method: "GET",
+      async run({ res, url }) {
+        const name = url.pathname.slice("/api/photo/".length);
+        const bytes = okPhoto(name) ? await tree.store.photo(name) : null;
+        if (!bytes) return json(res, 404, { ok: false, error: "no such photo" });
+        res.writeHead(200, {
+          "content-type": MIME[".jpg"],
+          "content-length": bytes.length,
+          // the name changes with the contents, so a photo once fetched never needs asking again
+          "cache-control": "private, max-age=31536000, immutable",
+          "x-content-type-options": "nosniff",
+        });
+        return res.end(bytes);
+      },
+    },
+  ];
+
+  /** Everything else is the app itself. */
+  async function app({ res, url }: Ctx & { url: URL }) {
+    const file = url.pathname === "/" || url.pathname === "/index.html" ? "genealogy.html" : url.pathname.slice(1);
+    if (file.includes("..") || file.startsWith("/")) return json(res, 400, { ok: false, error: "bad path" });
+    try {
+      const body = await readFile(join(s.dist, file));
+      const ext = file.slice(file.lastIndexOf("."));
+      res.writeHead(200, { "content-type": MIME[ext] || "application/octet-stream", "cache-control": "no-store" });
+      return res.end(body);
+    } catch {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      return res.end("The app has not been built. Run: npm run build\n");
+    }
+  }
+
+  const exact = (routes: ExactRoute[], req: IncomingMessage) =>
+    routes.find((r) => r.url === req.url && (!r.method || r.method === req.method));
+
+  return async (req, res) => {
+    // written once the answer has gone out, so the status is the real one
+    const started = Date.now();
+    res.on("finish", () => s.accessLog(req, res, started));
+
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+
+    try {
+      const ctx: Ctx = { req, res, role: auth.roleOf(req) };
+      const free = exact(open, req);
+      if (free) return void (await free.run(ctx));
+
+      // Basic credentials (curl, the backup, the smoke check) count against the
+      // address the same way the form does; a valid session cookie is not a guess
+      if (auth.guarded && !auth.ticketRole(req)) {
+        const basic = auth.basicRole(req);
+        if (basic !== undefined) {
+          const ip = ipOf(req, s.trustProxy);
+          const wait = throttle.wait(ip);
+          if (wait) {
+            res.writeHead(429, { "content-type": "text/plain; charset=utf-8", "retry-after": String(Math.ceil(wait / 1000)) });
+            return void res.end("Too many wrong passwords. Try again in " + minutes(wait) + " min\n");
+          }
+          if (basic) throttle.pass(ip);
+          else throttle.fail(ip);
+        }
+      }
+      if (!ctx.role) return void refuse(ctx);
+      const own = exact(admin, req);
+      if (own) return void (await own.run(ctx));
+
+      const url = new URL(req.url as string, "http://" + (req.headers.host ?? "127.0.0.1"));
+      const route = api.find((r) => (r.prefix ? url.pathname.startsWith(r.path) : r.path === url.pathname) && r.method === req.method);
+      if (route) return void (await route.run({ ...ctx, url }));
+      if (url.pathname.startsWith("/api/")) return json(res, 404, { ok: false, error: "no such method" });
+      await app({ ...ctx, url });
+    } catch (e) {
+      console.error(e);
+      json(res, 500, { ok: false, error: String(e && (e as Error).message) });
+    }
+  };
+}

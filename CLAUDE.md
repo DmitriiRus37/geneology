@@ -5,14 +5,21 @@ Guidance for Claude Code sessions in this repository.
 ## What this is
 
 A local family-tree editor: React 19 + TypeScript + Vite front end, a dependency-free Node
-server (`server.mjs`) that stores one JSON file per person in `persons/`. All domain and
+server (`server.mjs`, which only imports `server/main.ts`) that stores one JSON file per person in `persons/`. All domain and
 layout logic is plain TypeScript with no DOM access, so it runs and is tested directly in
 Node. `README.md` describes the product and the code map (ENG first, then RUS).
 
-`server.mjs` has two stores behind one tree parser. **disk** (default) is the `persons/`
-folder. **memory** (`--store memory`, what the container runs) keeps everything in RAM:
-the tree arrives as a zip on `POST /api/upload`, leaves on `GET /api/download`, and a
-restart wipes it. Zip reading and writing are hand-rolled on `node:zlib` — the server
+The server is TypeScript in `server/` that Node runs directly (type stripping, no build;
+`erasableSyntaxOnly` forbids `enum`, decorators and parameter properties), one file per job,
+wired together in `main.ts`; no module does anything on import or keeps global state. It has
+two stores behind one tree parser, `src/model/cards.ts` (imported by the server as it is, so
+it imports nothing and the image copies it with `server/*.ts`, tests excluded). **disk** (default) is the `persons/`
+folder (`--dir` or `GENEALOGY_DIR`; the container runs it on `/app/data`, bind-mounted from
+`data/` next to the compose file on the server, so the tree survives restarts and deploys).
+**memory** (`--store memory`) keeps everything in RAM and a restart wipes it. The tree
+arrives as a zip on `POST /api/upload` and leaves on `GET /api/download`; memory takes any
+archive, a folder only while it holds nobody's card (a first deploy or a restore,
+`make restore FILE=…`), so an upload can never overwrite a tree on disk. Zip reading and writing are hand-rolled on `node:zlib` — the server
 still has no dependencies. `GENEALOGY_USER`/`GENEALOGY_PASS` turn on the guard: browsers log in at `/login` and carry
 a session cookie that dies with the process, tools keep using HTTP Basic.
 `GENEALOGY_ADMIN_USER`/`GENEALOGY_ADMIN_PASS` add a second account, the only one allowed on
@@ -22,11 +29,48 @@ field is filled in by strangers, so it is HTML-escaped on the page and JSON does
 The page also resolves addresses to a country and city through `GEO_SOURCES` (ipinfo.io,
 then get.geojs.io, then ipwho.is — first to answer wins), cached in memory, only when an
 admin opens the page and only for the rows shown;
-`--host`/`HOST` sets the bind address, still `127.0.0.1` by default. `/api/health` is the
+`--host`/`HOST` sets the bind address, still `127.0.0.1` by default. Wrong passwords, by the
+form or by Basic, are counted per address in `server/throttle.ts`: `GENEALOGY_LOCK_TRIES` (5)
+within `GENEALOGY_LOCK_MINUTES` (15) lock the address out with 429 for as long, and the
+password is not checked while locked; a valid session cookie is never counted. Every answer
+carries `SECURITY_HEADERS` from `server/routes.ts` (CSP with `'unsafe-inline'` for the
+single-file page, `img-src` with `data:`/`blob:` for exports, `frame-ancestors 'none'`,
+`nosniff`, `X-Frame-Options`, `Referrer-Policy`): anything the app starts loading from
+another origin must be added there. `/api/health` is the
 only route outside the guard. `LOG_DIR` turns on the request log (one line per request,
 no headers and no bodies); it rotates itself at `LOG_MAX` (10 MB) keeping `LOG_KEEP` (3)
-gzipped files. Without `LOG_DIR` nothing is written, so local runs stay quiet. Deployment lives in `Dockerfile`, `docker-compose-prod.yml`,
-`Makefile` and the `deploy` / `backup-tree` skills in `.claude/skills/`.
+gzipped files. Without `LOG_DIR` nothing is written, so local runs stay quiet. Both logs
+record the connection's address: `X-Forwarded-For` is ignored unless
+`GENEALOGY_TRUST_PROXY=1` (then only its rightmost entry counts) — production publishes the
+container port directly, with no proxy in front. Deployment lives in `Dockerfile`, `docker-compose-prod.yml`,
+`Makefile` and the `deploy` / `backup-tree` skills in `.claude/skills/`. The final image
+copies only `server.mjs`, `server/*.ts` (tests excluded via `.dockerignore`) and
+`src/model/cards.ts`: anything new the server imports from `src/` must be added there, or
+the server breaks only in production.
+
+The card format is one contract, `src/model/cards.ts` (`cardsToTree`, `treeToCards`,
+`okId`, `cardIdOf`): a file is a person's card only if it parses to an object with a string
+`name` or `id`, and a save deletes only files that were cards — anything else in the folder
+is never read, rewritten or deleted. `okId` also refuses `Object.prototype` names.
+Photos are JPEGs in `photos/` beside the cards (`PHOTOS`, `okPhoto`): named by the first
+16 hex digits of their sha256, never rewritten, outside the fingerprint, uploaded on
+`POST /api/photo` and served on `GET /api/photo/<name>`. A card holds only the name in
+`photo`; the image never goes into the tree (the beacon is capped at 64 KB, the undo
+history keeps 60 trees). The archive carries the photos the cards show; nothing deletes
+an unused photo. On the client `normalize` in `src/model/tree.ts` gives people with unusable ids fresh ones, drops
+duplicate links and keeps unknown card fields in `Person.extra`, which `treeToCards` writes
+back.
+
+The client in layers: `src/io/api.ts` (stateless HTTP calls), `src/io/sync.ts` (the sync
+engine: fingerprint, write queue, autosave, probe, reread; network, timers, localStorage and
+`sendBeacon` are injected) and `src/ui/useSync.ts` (React wiring; `App.tsx` only calls it).
+`src/ui/Board.tsx` assembles `src/ui/board/`: `view.ts` (pure view arithmetic),
+`gestures.ts` (the pointer/touch automaton, timers injected), `useView`/`useGestures`,
+`Popovers.tsx`. The layout takes a card sizer, `layout(tree, cards)`: the browser measures
+text with a canvas (`src/ui/cards.ts`), Node by characters (`src/testing/cards.ts`). Facts
+the stylesheet repeats (the phone media query, the bar height) live in `src/ui/screen.ts`,
+and `src/ui/css.test.ts` keeps them equal to `styles.css`. A tree read from the server
+clears the undo history: undo must never write an older tree over the server's.
 
 ## Commands
 
@@ -36,25 +80,26 @@ npm start            # build + serve at http://127.0.0.1:5179
 npm run serve        # serve the existing build
 npm run dev          # Vite with hot reload on 5178, /api proxied to 5179 (run `serve` too)
 npm run build        # dist/genealogy.html, a single self-contained page
-npm test             # node --test "src/**/*.test.ts" (keep the quotes)
-npm run typecheck    # tsc --noEmit
+npm test             # node --test "src/**/*.test.ts" "server/**/*.test.ts" (keep the quotes)
+npm run test:update  # the same, rewriting the snapshots: only after a deliberate change
+npm run typecheck    # tsc for the app, then for server/ (its own tsconfig, no DOM types)
 node tools/metrics.ts /path/to/data-copy   # layout quality metrics; `seed` = src/data/family.json
 node tools/smoke.mjs <base-url> [user] [pass]   # smoke-check a running instance
 ```
 
 ```bash
-make check                                  # typecheck + tests
+make check                                  # typecheck + build + tests; make deploy depends on it
 make build_docker                           # image for linux/amd64
 make run_local                              # run that image here (needs GENEALOGY_USER/PASS)
 make smoke BASE=<url>                        # check a running instance
 make backup                                 # pull the remote tree into backups/
 make applog N=50                            # tail the remote request log
 make applog_grep PATTERN=<text>             # search it, gzipped history included
-PROD_HOST=<ip> SSHPASS=<pw> GENEALOGY_USER=<u> GENEALOGY_PASS=<p> make deploy
+make deploy                                 # reads PROD_HOST, SSHPASS, GENEALOGY_* from .env
 ```
 
 Rebuild `dist/` after changing anything under `src/`: `npm start` serves `dist/`, not the
-sources. Changes to `server.mjs` need a server restart.
+sources. Changes to `server/` need a server restart.
 
 ## Data safety (non-negotiable)
 
@@ -84,7 +129,7 @@ sources. Changes to `server.mjs` need a server restart.
   (`Msg`), never rendered strings. Both dictionaries must have the same keys; a test checks it.
   The server is the exception: it returns plain English error strings, and the UI shows them
   verbatim as the detail of a message.
-- No runtime dependencies beyond React in the app and none at all in `server.mjs`.
+- No runtime dependencies beyond React in the app and none at all in the server.
 - `model/` and `layout/` must stay free of DOM access; they are imported by Node tests and
   by `tools/metrics.ts`.
 - Names are entered first-name-first ("Имя Отчество Фамилия"); `names.ts` assumes the
@@ -113,7 +158,54 @@ Before and after any layout change run `npm test` and `node tools/metrics.ts` on
 snapshot. Nearly every improvement of one metric costs another; do not claim an
 improvement without the numbers, and quote them to the user. Random-tree fuzzing (build
 trees with `addPerson`/`link`/`addPair`, check overlaps and NaN in both modes) has caught
-bugs that the real data did not.
+bugs that the real data did not; it lives in `src/layout/fuzz.test.ts`, on the trees of
+`src/testing/trees.ts`.
+
+`src/layout/snapshot.test.ts` records where every card and line lands. A refactor must
+leave those snapshots untouched; a deliberate layout change rewrites them with
+`npm run test:update`, and the diff goes to the user with the metrics.
+
+Tests named "known issue …" pin a known bug exactly as it behaves today, so that a
+rewrite cannot change it unnoticed. Fixing the bug means turning its test around.
+
+## Testing and checking changes
+
+- Test at boundaries that do not move: the HTTP API (`server/testing.ts` starts a real
+  `node server.mjs` on a free port in a temp folder), the reducer, the layout's output, the
+  rendered markup, the sync engine and the gesture automaton. Do not pin internal helpers.
+- Node 26 runs `.ts` but not `.tsx`: whatever a Node test imports must live in a `.ts`
+  file. Markup is rendered through Vite's SSR loader in `src/ui/render.test.ts`.
+  `src/purity.test.ts` refuses browser globals in `model/` and `layout/`.
+- Engines with time in them take their timers from outside and are tested with
+  `t.mock.timers`: `src/io/sync.test.ts` puts a fake server behind `fetch` and a harness
+  that commits the way React renders do; `src/ui/board/gestures.test.ts` plays fingers and
+  a mouse against the automaton.
+- Tools with side effects run their main only under `import.meta.main`, so tests can
+  import them (`tools/metrics.ts`).
+- Synthetic trees for tests come from `src/testing/trees.ts`; snapshots and fixtures hold
+  ids and numbers, never real names.
+- A change that moves UI code without changing behaviour is checked against the previous
+  build in the built-in browser: a `git worktree` of the old commit (symlink
+  `node_modules`), `npm run build` in both, two servers on two copies of the data with
+  `LOG_DIR` set, the same scripted scenario in both, then compare the `access.log` request
+  sequences, DOM fingerprints and the data folders. Touch is simulated with synthetic
+  `PointerEvent`/`TouchEvent`s (stub `setPointerCapture`). Pitfalls of the hidden pane: CSS
+  transitions do not run (inject `#rail{transition:none!important}` before measuring),
+  `.focus()` sends no `focusin`, `resize_window` resets between turns, and a download
+  there is a real download.
+
+## Working agreements
+
+- Commits only when the user says so, never a push. Subject `area: what happened`, short
+  and lowercase, then a bullet body; list the files explicitly. Each commit must pass
+  `make check` on its own: check a staged state with
+  `git checkout-index -a --prefix=<scratch dir>/` plus a `node_modules` symlink. Changes
+  of two tasks in one file (often `README.md`) are split by staging an edited copy.
+- Parallel agents work in separate `git worktree`s (symlink `node_modules`, never run npm
+  there: it is shared) and their diffs are applied to the main checkout one at a time;
+  agents touching the same files go one after another.
+- The shell is zsh on macOS: a pipeline's statuses are in `$pipestatus`, and there is no
+  `timeout` command.
 
 ## Documentation rules
 

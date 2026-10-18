@@ -6,7 +6,6 @@ import {
   clone,
   cutAbove,
   link,
-  normalize,
   parentsOf,
   removePair,
   removePerson,
@@ -30,9 +29,17 @@ export interface AppState {
   fitSeq: number;
   /** who to bring into view without touching the zoom */
   focus: { id: string; seq: number } | null;
+  /**
+   * What is being typed into: a person and the fields of a quiet update. While it
+   * stays the same, the keystrokes take no undo step of their own; any other action
+   * clears it.
+   */
+  typing: string | null;
 }
 
 export type Action =
+  /** `silent`: a tree read from the server. No undo step, and the history goes with the old
+      tree: undo must never bring back a tree from before it and write it over the server's. */
   | { type: "load"; tree: TreeState; notice?: Msg; silent?: boolean }
   | { type: "select"; id: string | null }
   | { type: "add"; spec: PersonSpec; relation?: { mode: Relation; to: string } }
@@ -63,6 +70,7 @@ export const initialAppState = (tree: TreeState): AppState => ({
   notice: null,
   fitSeq: 0,
   focus: null,
+  typing: null,
 });
 
 const say = (s: AppState, m: Msg): AppState => ({
@@ -93,14 +101,16 @@ function dropLinks(d: TreeState, drop: (l: Link) => boolean): boolean {
   return d.links.length !== before;
 }
 
+/** The history with one more undo step: the tree as it is before a change. */
+const remember = (s: AppState): TreeState[] => s.history.concat([s.tree]).slice(-HISTORY_MAX);
+
 /** The shared frame of a change: a snapshot into history, work on a copy, the new state out. */
 function edit(s: AppState, fn: (draft: TreeState) => EditOut): AppState {
   const draft = clone(s.tree);
   const out = fn(draft);
   if (!out.ok) return out.notice ? say(s, out.notice) : s;
 
-  const history = s.history.concat([s.tree]);
-  if (history.length > HISTORY_MAX) history.shift();
+  const history = remember(s);
   const wanted = out.select !== undefined ? out.select : s.selected;
   const next: AppState = {
     ...s,
@@ -114,13 +124,20 @@ function edit(s: AppState, fn: (draft: TreeState) => EditOut): AppState {
 }
 
 export function reducer(s: AppState, a: Action): AppState {
+  const next = step(s, a);
+  // typing goes on only while nothing else happens: after any other action the next
+  // keystroke starts a new undo step
+  return next.typing !== null && !(a.type === "update" && a.quiet) ? { ...next, typing: null } : next;
+}
+
+function step(s: AppState, a: Action): AppState {
   switch (a.type) {
     case "load":
       return {
         ...s,
         tree: a.tree,
         selected: null,
-        history: a.silent ? s.history : s.history.concat([s.tree]).slice(-HISTORY_MAX),
+        history: a.silent ? [] : remember(s),
         fitSeq: s.fitSeq + 1,
         notice: a.notice ? { msg: a.notice, seq: (s.notice?.seq ?? 0) + 1 } : s.notice,
       };
@@ -149,12 +166,22 @@ export function reducer(s: AppState, a: Action): AppState {
       });
 
     case "update": {
-      if (!s.tree.people[a.id]) return s;
-      // field edits go without a snapshot: otherwise undo would roll back letter by letter
+      const p = s.tree.people[a.id];
+      if (!p) return s;
       if (a.quiet) {
-        const tree = clone(s.tree);
-        Object.assign(tree.people[a.id], a.patch);
-        return { ...s, tree };
+        if (unchanged(p, a.patch)) return s;
+        // typing into a field: one undo step, taken at the first keystroke — not one per letter
+        const typing = a.id + ":" + Object.keys(a.patch).sort().join(",");
+        if (s.typing === typing) {
+          const tree = clone(s.tree);
+          Object.assign(tree.people[a.id], a.patch);
+          return { ...s, tree };
+        }
+        const next = edit(s, (d) => {
+          Object.assign(d.people[a.id], a.patch);
+          return { ok: true };
+        });
+        return { ...next, typing };
       }
       return edit(s, (d) => {
         Object.assign(d.people[a.id], a.patch);
@@ -224,18 +251,10 @@ export function reducer(s: AppState, a: Action): AppState {
       });
 
     case "setGap":
-      return { ...s, tree: { ...s.tree, gap: a.gap, people: unpin(s.tree.people) }, fitSeq: s.fitSeq + 1 };
+      return relayout(s, { ...s.tree, gap: a.gap });
 
     case "setTimeline":
-      return {
-        ...s,
-        tree: { ...s.tree, timeline: a.on, people: unpin(s.tree.people) },
-        fitSeq: s.fitSeq + 1,
-        notice: {
-          msg: msg(a.on ? "msg.byYears" : "msg.byGenerations"),
-          seq: (s.notice?.seq ?? 0) + 1,
-        },
-      };
+      return say(relayout(s, { ...s.tree, timeline: a.on }), msg(a.on ? "msg.byYears" : "msg.byGenerations"));
 
     case "undo": {
       if (!s.history.length) return say(s, msg("msg.nothingToUndo"));
@@ -285,18 +304,45 @@ function relate(d: TreeState, mode: Relation, from: string, to: string): PairRes
 }
 
 /**
- * A brother or sister for `to`. If that person has parents in the tree, the new person
- * becomes their child and these are ordinary arrows. If there are no parents, we record
- * the kinship itself, and it is drawn dashed.
+ * `to` and `id` become brother and sister. When only one of them has parents in the
+ * tree, the other becomes their child too, and these are ordinary arrows; that is what
+ * happens to a person added as a sibling. When neither has parents, or both have their
+ * own, the kinship itself is recorded and drawn dashed: nobody's parents are rewritten.
  */
 function sibling(d: TreeState, to: string, id: string): PairResult {
-  const ps = parentsOf(d, to);
-  if (!ps.length) return addSibling(d, to, id);
-  for (const p of ps) {
+  const mine = parentsOf(d, to);
+  const theirs = parentsOf(d, id);
+  if (mine.length && !theirs.length) return adopt(d, mine, id);
+  if (theirs.length && !mine.length) return adopt(d, theirs, to);
+  return addSibling(d, to, id);
+}
+
+/** `parents` become the parents of `id` as well. */
+function adopt(d: TreeState, parents: string[], id: string): PairResult {
+  for (const p of parents) {
     const r = link(d, p, id);
     if (!r.ok) return r;
   }
   return { ok: true };
+}
+
+/** Whether a patch would leave the person as they are. */
+const unchanged = (p: Person, patch: Partial<Person>): boolean =>
+  Object.entries(patch).every(([k, v]) => JSON.stringify(p[k as keyof Person]) === JSON.stringify(v));
+
+/**
+ * A new gap or mode builds the layout anew and releases every pinned card. Releasing
+ * them is an undo step, so undo brings back the pins with the old gap or mode; with
+ * nothing pinned there is no step, or a dragged slider would fill the history.
+ */
+function relayout(s: AppState, tree: TreeState): AppState {
+  const pinned = Object.values(tree.people).some((p) => p.fx !== undefined || p.fy !== undefined);
+  return {
+    ...s,
+    tree: pinned ? { ...tree, people: unpin(tree.people) } : tree,
+    history: pinned ? remember(s) : s.history,
+    fitSeq: s.fitSeq + 1,
+  };
 }
 
 function unpin(people: Record<string, Person>): Record<string, Person> {
@@ -306,28 +352,4 @@ function unpin(people: Record<string, Person>): Record<string, Person> {
     out[id] = rest;
   }
   return out;
-}
-
-/* ============================= the store ============================ */
-
-const KEY = "genealogy:v3";
-
-export function loadStored(): TreeState | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const d = JSON.parse(raw);
-    if (!d || !d.people || !Object.keys(d.people).length) return null;
-    return normalize(d);
-  } catch {
-    return null; // a broken store must not stop the tree from opening
-  }
-}
-
-export function store(tree: TreeState): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(tree));
-  } catch {
-    /* private mode, quota exceeded — we will live */
-  }
 }

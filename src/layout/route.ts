@@ -220,7 +220,7 @@ function freeMidY(
 }
 
 /** We drop repeats and points that lie on one straight line. */
-function tidy(pts: Pt[]): Pt[] {
+export function tidy(pts: Pt[]): Pt[] {
   const out: Pt[] = [];
   for (const p of pts) {
     const last = out[out.length - 1];

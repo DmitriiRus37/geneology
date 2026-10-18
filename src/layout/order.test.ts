@@ -9,13 +9,14 @@ import { computeEdges } from "./edges.ts";
 import { layout } from "./layout.ts";
 import { NODE_W } from "./measure.ts";
 import type { Rect } from "./route.ts";
+import { nodeCards } from "../testing/cards.ts";
 
 const real = (): TreeState =>
   normalize(JSON.parse(readFileSync(new URL("../data/family.json", import.meta.url), "utf8")));
 
 /** Line crossings on a layout — by the same formula as in tools/metrics.ts. */
 const crossingsOf = (s: TreeState) => {
-  const { pos, level } = layout(s);
+  const { pos, level } = layout(s, nodeCards());
   const rects: Rect[] = Object.keys(pos).map((id) => ({
     x1: pos[id].x - pos[id].w / 2,
     y1: pos[id].y,
@@ -74,7 +75,7 @@ test("a wife between her husband's brothers: reordering removes the crossing", (
   assert.equal(st.visual, 0, "no crossings are left");
   assert.equal(st.through, 0);
 
-  const { pos } = layout(s);
+  const { pos } = layout(s, nodeCards());
   // the couple together, the brothers by seniority, the wife's parents exactly above her
   assert.ok(Math.abs(pos[ids.X1].x - pos[ids.S1].x) <= NODE_W + 24 + 1, "the spouses are side by side");
   assert.ok(pos[ids.X1].x < pos[ids.X2].x, "the elder brother is to the left of the younger");
@@ -91,7 +92,7 @@ test("reordering does not touch what was already good", () => {
 
 test("spouses stand side by side with nobody between them", () => {
   for (const s of [real(), inLaws().s]) {
-    const { pos, level } = layout(s);
+    const { pos, level } = layout(s, nodeCards());
     for (const [a, b] of couplesOf(s)) {
       if (level[a] !== level[b]) continue;
       const lo = Math.min(pos[a].x, pos[b].x);
@@ -106,7 +107,7 @@ test("spouses stand side by side with nobody between them", () => {
 
 test("siblings run in order of seniority", () => {
   const s = real();
-  const { pos, level } = layout(s);
+  const { pos, level } = layout(s, nodeCards());
   const byChild: Record<string, string[]> = {};
   for (const l of s.links) (byChild[l.child] ||= []).push(l.parent);
   const byUnion: Record<string, string[]> = {};
@@ -143,7 +144,7 @@ test("whoever has two families gets one spouse on the left and the other on the 
   link(s, T1, C1);
   link(s, ids.X2, C2);
   link(s, T2, C2);
-  const { pos } = layout(s);
+  const { pos } = layout(s, nodeCards());
   const x = pos[ids.X2].x;
   assert.ok((pos[T1].x < x && pos[T2].x > x) || (pos[T2].x < x && pos[T1].x > x), "the wives are on opposite sides");
   assert.ok(pos[C1].x < pos[C2].x, "the children in order of seniority");

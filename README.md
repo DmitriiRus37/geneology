@@ -98,6 +98,15 @@ extra record. Canvas settings live in `persons/_view.json`: the mode, the spacin
 - changing a date, a name, the sex or dragging a card rewrites only that person's file;
 - deleting a person deletes the file.
 
+Photos lie in `persons/photos/`. **Add photo** in the person's panel takes any picture the
+browser can open, scales it down to 640 px on the longer side and stores it as a JPEG named
+after its contents, for example `photos/858131a276d14932.jpg`; the card keeps only that
+name in a `photo` field. A photo file never changes, and removing a photo from a person
+leaves the file in place, so undo can bring it back. **Download archive** takes the photos
+the cards show along with the cards, and **Upload archive** brings them back. Photos need
+the server: without one the button is not shown. SVG, PNG and PDF pictures show an empty
+round frame where a photo stands.
+
 The server writes through a temporary file and a rename, so an interrupted write never
 damages what is already on disk.
 
@@ -109,6 +118,17 @@ rejects the write and touches no file. The tab then stops saving and offers "Re-
 disk". A forgotten tab with an old tree can no longer erase fresh edits, and a tab refuses
 to write to an old server version that does not understand fingerprints. Editing the files
 by hand while the server runs is fine: the tab notices the difference and offers to re-read.
+A tree read from the server starts the undo history afresh, so undo can never bring back
+the tree from before it and write it over someone else's edits. A save deletes only the
+cards of people removed in the tab: a file the server cannot read as a card is left alone.
+
+A save that fails for any other reason — the network, a server error — is not lost: it is
+retried every few seconds until it goes through, and the app says when saving fails and when
+it works again. If a server that keeps the tree in memory restarts empty, the open tab
+writes its tree back and says so. When the page is hidden, a pending save goes out at once;
+closing a tab whose unsaved tree is too large for the browser's closing request makes the
+browser ask first. A slow server is asked three times before the app falls back to keeping
+edits in the browser, and it says so when it does.
 
 ### Works without the server too
 
@@ -126,12 +146,13 @@ means `persons/`, a yellow one means the browser. Move a tree between the two mo
 
 ### On a remote machine
 
-The same app can run on a server, in Docker. There it works differently on purpose: the
-tree lives **in the container's memory** and never touches the server's disk. You bring it
-in as a zip archive with **Upload archive**, edit it, take it away with **Download archive**
-and wipe it with **Clear**. A restart, a reboot or a deploy leaves a clean slate, so nothing
-of your family stays on a machine you do not own. A fresh instance comes up genuinely empty:
-the sample tree is stripped out of the image, so the page carries nobody's names.
+The same app can run on a server, in Docker. The tree is kept the same way as at home, a
+card per person and `photos/` beside them, in the `data/` folder next to the compose file on
+the server, mounted into the container. A restart, a reboot or a deploy keeps it. A fresh
+instance comes up genuinely empty: the sample tree is stripped out of the image, so the page
+carries nobody's names. Bring your tree in as a zip archive with **Upload archive**, which a
+folder takes only while it holds nobody's card, so an archive can fill an empty server but
+never overwrite a tree. Take a copy away with **Download archive**.
 
 The server holds one tree, not one per visitor: everyone who logs in with the same password
 sees the same people, and **Clear** empties it for all of them at once. **Log out** drops the
@@ -144,7 +165,10 @@ was let through, and which browser. The newest 10 000 (`GENEALOGY_ATTEMPTS` chan
 are kept as `logs/logins.jsonl` next to the request log — one JSON object per line,
 `{"when":…,"login":…,"address":…,"result":…,"browser":…}` — so a restart or a redeploy does
 not lose them, and the page links to the raw file. JSON does the escaping, so nothing the
-login field can carry will forge a record or break a line.
+login field can carry will forge a record or break a line. Both logs record the address of
+the connection itself: `X-Forwarded-For` is anybody's to write, so it is ignored unless
+`GENEALOGY_TRUST_PROXY=1` is set — only for a reverse proxy of your own in front of the
+container, whose entry (the last one) is then used.
 
 Each row also shows where the address is, roughly — `Warsaw, PL`. That comes from
 ipinfo.io, with get.geojs.io and ipwho.is behind it: the first to answer wins, so one being
@@ -157,7 +181,7 @@ The administrator lands on `/admin` straight after signing in and can still open
 Without those two variables the page exists for nobody.
 
 ```bash
-make check                                   # typecheck and tests
+make check                                   # typecheck, build and tests; make deploy will not ship while it is red
 GENEALOGY_USER=fam GENEALOGY_PASS='secret' make run_local   # try the image here first
 make smoke                                   # check the running instance
 ```
@@ -165,8 +189,8 @@ make smoke                                   # check the running instance
 Rolling out to the server:
 
 ```bash
-PROD_HOST=1.2.3.4 SSHPASS='<root password>' \
-GENEALOGY_USER=fam GENEALOGY_PASS='<tree password>' make deploy
+cp .env.example .env    # once: the server's address and the passwords; git ignores it
+make deploy
 ```
 
 The image is built here and shipped as a tarball; the server only loads it and starts the
@@ -177,11 +201,20 @@ page at `/login` and gets a session cookie that lasts until the server restarts;
 drops it. Tools keep using HTTP Basic, so `curl -u`, `make backup` and `make smoke` work
 unchanged.
 
-Because the tree is in memory, **a deploy wipes it**. Take the archive first and put it
-back afterwards:
+Password guessing is locked out per address: after 5 wrong passwords within 15 minutes, by
+the form or by HTTP Basic, the address gets `429 Too Many Requests` for 15 minutes, and its
+passwords, the right one included, are not even checked until then. Requests fired at once
+are counted one by one. A session already open stays open. `GENEALOGY_LOCK_TRIES` and
+`GENEALOGY_LOCK_MINUTES` change the numbers. Every answer carries a Content-Security-Policy
+(the page loads nothing from other sites, and no other site may frame it), plus `nosniff`,
+`X-Frame-Options: DENY` and `Referrer-Policy: no-referrer`.
+
+The tree survives a deploy, but the server's disk is still a single copy. Take one off now
+and then, and put it back into an empty server, the first time or after losing the data:
 
 ```bash
-make backup                                  # writes backups/persons_<date>.zip, keeps five
+make backup                                  # writes backups/persons_<date>.zip, photos included, keeps five
+make restore FILE=backups/persons_<date>.zip # only into a server that holds no tree yet
 ```
 
 The server writes one line per request into `logs/access.log` next to the compose file —
@@ -199,7 +232,7 @@ make applog_grep PATTERN=192.0.2.7           # search the gzipped history too
 Two things worth knowing. Basic auth over plain HTTP sends the password in clear text — on
 an untrusted network put TLS in front or reach the service through an SSH tunnel. And the
 local `persons/` folder is never touched by any of this: the remote instance only ever
-holds what has been uploaded to it.
+holds what has been uploaded to it, and keeps it on the server's disk.
 
 ### Development
 
@@ -209,7 +242,9 @@ npm run dev         # terminal 2: Vite with hot reload on 5178, /api is proxied 
 ```
 
 ```bash
-npm test                        # unit tests (Node 24+): dates, names, layout, row order, bus stacking, tree actions, dictionary
+npm test                        # all tests (Node 24+): dates, names, layout, row order, bus stacking, tree actions, dictionary,
+                                #   the server's HTTP API, layout snapshots, random trees, interface markup
+npm run test:update             # after a deliberate change: rewrite the snapshots, then read their diff
 npm run typecheck
 node tools/metrics.ts           # layout quality metrics on persons/
 node tools/metrics.ts /path/to/copy   # the same on a copy of the data
@@ -224,40 +259,68 @@ another.
 ### Project structure
 
 ```
-server.mjs    local server: serves the app, reads and writes persons/. No dependencies
-persons/      your data, one file per person
+server.mjs    starts the local server: serves the app, reads and writes persons/. No dependencies
+server/       the server itself, TypeScript that Node runs as it is (throttle.ts: the password lockout)
+  main.ts       settings in, parts built, port opened
+  routes.ts     every route in the order it is tried
+  tree.ts       the tree over a store, the write queue and the version check
+  stores.ts     disk and memory stores behind one interface
+  auth.ts       passwords, the login ticket, who is asking
+  attempts.ts   the sign-in log; pages.ts, geo.ts: the admin page and where addresses are
+  accesslog.ts  the request log and its rotation; zip.ts, http.ts, config.ts
+persons/      your data, one file per person; photos/ holds the photos
 src/
   util.ts     small shared helpers: lists by key, mean, extent, merging into components
   i18n.ts     RU/EN dictionary, t(lang, key, vars); the model returns message keys
   model/      data logic, no DOM
     types.ts    Person, Link, Pair, TreeState
+    cards.ts    the file format: cards <-> tree, shared with the server
     dates.ts    date parsing: 01.12.1995, 12.1995, "autumn 1938", "1880s", "197?"
     names.ts    name forms, search, sex detection
     tree.ts     links, cycle checks, normalisation of files, hiding ancestors, siblings
     kin.ts      who is who to whom: father, mother, husband, wife, son, daughter, sibling
-    store.ts    reducer, undo history, browser storage as the fallback
+    store.ts    reducer and undo history
   layout/     layout and geometry, no DOM
-    measure.ts  card size, line wrapping and clipping
-    layout.ts   generations, components, family units, row order
+    measure.ts  card size, line wrapping and clipping; the measuring and the words come from outside
+    layout.ts   the pipeline: card boxes, rows, the unplaced block, pinned cards
+    families.ts parents and children, connected pieces, family units for the layout and for the lines
+    levels.ts   generations: which row everyone stands in
+    rows.ts     the first row order, by traversal
     place.ts    x placement: families as clusters packed by contour, in-laws above their child
     order.ts    reordering people within rows so that lines cross less
     crossings.ts crossing and proximity counters shared by the layout and the metrics
     timeline.ts placement by year of birth
     route.ts    routing lines around cards
+    detour.ts   a way round the cards on a grid, for a line the usual route cannot take
     edges.ts    the lines: couple bracket, bridges, arrows to children
     couple.ts   side-by-side couple geometry shared by the lines and the row-order scoring
   ui/         React components, rendering and input only
     bits.tsx    shared bits: date field, button row, person line, "close on click outside"
-  io/         disk.ts talks to the server; JSON save/open, SVG, PNG and PDF export
+    sheet.ts    the side panel as a sheet on a phone: three heights, drag and flick
+    screen.ts   the phone media query and the bar's height, which the stylesheet repeats (a test holds them together)
+    Board.tsx   the canvas: puts the pieces of board/ together and draws
+    board/      view.ts: the scale and offset and the arithmetic of moving them; gestures.ts: what a finger
+                or a mouse means, as a plain automaton; useView.ts, useGestures.ts: both wired to React;
+                Popovers.tsx: the add window and the menu of a line
+    cards.ts    what the layout needs from the screen: a canvas to measure text, card words in the language
+    useSync.ts  the sync engine wired into React; keys.ts: what a key press means
+  io/         talking to the server and to files
+    api.ts      the server's HTTP API, one request per function
+    photo.ts    a chosen picture scaled down to a JPEG before it goes to the server
+    sync.ts     keeping the tree in step with the server: fingerprint, write queue, autosave
+    local.ts    the browser's copy when there is no server
+    files.ts, exportSvg.ts, exportPdf.ts: JSON save/open, SVG, PNG and PDF export
   data/       family.json, a small sample tree used to seed an empty persons/
 tools/metrics.ts  layout quality metrics
 tools/smoke.mjs   smoke check of a running instance, local or remote
 Dockerfile        the image for a remote machine: build stage, then node and one html
-docker-compose-prod.yml  what runs on the server: one service, no database, no volume
+docker-compose-prod.yml  what runs on the server: one service, no database, the tree in data/
 Makefile          build, ship, logs, backup
 ```
 
-The layout is a pure function `layout(state) → { pos, level, tl, lonePlate }`. Its result
+The layout is a pure function `layout(state, cards) → { pos, level, tl, lonePlate }`,
+where `cards` sizes a card (the browser measures with a canvas, the tests and the metrics
+by characters). Its result
 is memoised and handed to the components; dragging a card does not recompute the layout,
 it replaces one coordinate.
 
@@ -269,9 +332,9 @@ it replaces one coordinate.
   instead of creating a twin. Names are entered as first name, patronymic, surname.
 - **Arrows on the card**: click a person to get "parent" above, "child" below, "spouse" and
   "sibling" at the sides. The spouse goes to whichever side is freer.
-- **Siblings.** If the person has parents in the tree, the new sibling becomes their child
-  with ordinary lines. Otherwise the kinship is recorded explicitly and drawn dashed; such
-  people stand in one row, next to each other.
+- **Siblings.** If one of the two has parents in the tree and the other has none, the other
+  gets the same parents, with ordinary lines. If both have parents, or neither, the kinship
+  is recorded explicitly and drawn dashed; such people stand in one row, next to each other.
 - **Hide ancestors.** Select a person and hide their ancestors together with everything
   growing from them, except the person, their family and descendants. "Bring everyone back"
   restores the view. Remembered in `_view.json`.
@@ -288,17 +351,20 @@ it replaces one coordinate.
   each relation can be removed separately.
 - **Lines do not pass through cards.** If someone stands in the way, the vertical moves
   into the nearest gap between cards and comes back under it; turns are made in the gaps
-  between rows.
+  between rows. By years too: an estimated year keeps clear of the parents' and children's,
+  and a line that cannot take the usual down–across–down route finds its way round.
 - **Kinship labels**: the list shows who each person is to the selected one. Two roles at
   once are shown together on one line.
 - **Same-sex marriage is not created**; the app explains the refusal. Unknown sex of either
-  person does not block it.
+  person does not block it. Nor is a marriage with one's own ancestor or descendant, nor a
+  parent link that would make two spouses parent and descendant.
 - **Namesakes are allowed.** "Add" always creates a new person; it warns about a namesake
   but does not stop you.
 - People not linked to anyone stand in a separate block under the tree, below a dashed line
   with a caption.
 - Sex is detected from the patronymic, the surname, the name ending and role words; a
-  coloured strip at the top of the card shows it. It can be corrected in the panel.
+  coloured strip at the top of the card shows it. A name the rules do not recognise (one in
+  Latin letters, say) leaves it unknown. It can be corrected in the panel.
 - **Timeline mode**: vertical position by year of birth with a sticky year scale on the
   left. Missing years are estimated from relatives and marked; a spouse counts more than
   other relatives.
@@ -319,7 +385,22 @@ it replaces one coordinate.
 - **Two fingers on the trackpad pan the canvas**, pinch zooms. The mouse wheel pans too
   (Shift for sideways); zoom with ⌘ or Ctrl, the `+`/`−` buttons, or a pinch on a touch
   screen.
-- Spacing slider, card dragging, search with highlighting, undo (⌘Z), JSON save and open.
+- **On a phone the tree takes the whole screen** and the side panel becomes a sheet at
+  the bottom. At rest it shows only the search and the add button; its grab bar is
+  dragged or flicked up to half the screen or nearly all of it, and a tap on the bar opens
+  and closes it. Tapping a person on the tree brings the sheet up with their fields and
+  keeps them in sight above it; tapping the empty canvas sends it back down. A finger pans
+  the tree even when it starts on a card — to move a card, rest the finger on it for a
+  moment first; a second finger while you carry it puts it back, unsaved, and zooms. The
+  canvas controls fold into one row at the top, the rest behind "more". While edits are not
+  being saved, the head of the sheet says so and offers to re-read.
+- **Undo (⌘Z)** takes back one step. Typing into a field is one step per field; changing
+  the spacing or switching to years can be undone, pinned cards included. Inside a text
+  field ⌘Z and ⇧⌘Z belong to the field's own typing.
+- **Files are forgiving.** A card with a broken link list still loads, an unusable id gets
+  a new one, a link written twice counts once, fields the app does not know are kept and
+  written back, and other JSON in the folder is left alone.
+- Spacing slider, card dragging, search with highlighting, JSON save and open.
 - **Export as an image**: SVG, PNG and PDF. The PDF holds the whole tree on one page of its
   own size, losslessly compressed, without libraries.
 
@@ -421,6 +502,15 @@ node server.mjs --port 8080            # другой порт
 - поправили дату, имя, пол, перетащили карточку — переписался только его файл;
 - удалили человека — файл исчез вместе с ним.
 
+Фотографии лежат в `persons/photos/`. Кнопка **«Добавить фото»** на панели человека берёт
+любую картинку, которую открывает браузер, уменьшает её до 640 px по длинной стороне и
+сохраняет JPEG с именем по содержимому, например `photos/858131a276d14932.jpg`; в карточке
+остаётся только это имя, в поле `photo`. Файл фотографии никогда не меняется, а если убрать
+фото у человека, файл остаётся на месте — отмена вернёт его. **«Скачать архив»** забирает
+вместе с карточками фотографии, которые они показывают, **«Загрузить архив»** возвращает их.
+Фото нужен сервер: без него кнопки нет. На картинках SVG, PNG и PDF на месте фото —
+пустая круглая рамка.
+
 Сервер пишет через временный файл с переименованием, так что оборванная запись не
 испортит уже лежащий на диске.
 
@@ -432,7 +522,19 @@ node server.mjs --port 8080            # другой порт
 сохранять и предлагает «Перечитать с диска». Забытая вкладка со старым древом не может
 стереть свежие правки, а в сервер старой версии, не понимающий отпечатков, вкладка писать
 отказывается. Править файлы руками при запущенном сервере можно: вкладка увидит
-расхождение и предложит перечитать.
+расхождение и предложит перечитать. Древо, прочитанное с сервера, начинает историю отмен
+заново: «Отменить» не вернёт древо, которое было до него, и не запишет его поверх чужих
+правок. Сохранение удаляет только карточки людей, удалённых во вкладке: файл, который
+сервер не может прочитать как карточку, остаётся на месте.
+
+Сохранение, сорвавшееся по другой причине — сеть, ошибка сервера, — не теряется: оно
+повторяется каждые несколько секунд, пока не пройдёт, а приложение говорит, когда
+сохранить не удалось и когда снова получилось. Если сервер, держащий древо в памяти,
+перезапустился пустым, открытая вкладка записывает своё древо обратно и сообщает об этом.
+Когда страница уходит в фон, отложенное сохранение уходит сразу; при закрытии вкладки с
+несохранённым древом, слишком большим для прощального запроса браузера, браузер сначала
+спросит. Медленный сервер спрашивают трижды, прежде чем перейти к хранению правок в
+браузере, — и об этом говорят.
 
 ### Без сервера тоже работает
 
@@ -450,12 +552,13 @@ Node.js, и откройте в браузере. Внизу панели все
 
 ### На удалённой машине
 
-То же приложение умеет работать на сервере, в Docker. Там оно устроено нарочно иначе:
-древо живёт **в памяти контейнера** и до диска сервера не доходит. Вы привозите его
-zip-архивом кнопкой **«Загрузить архив»**, правите, увозите кнопкой **«Скачать архив»** и
-стираете кнопкой **«Очистить»**. Перезапуск, перезагрузка и выкладка оставляют чистый лист —
-на чужой машине от вашей семьи не остаётся ничего. Свежий экземпляр поднимается по-настоящему
-пустым: образцовое древо вырезано из образа, и на странице нет ничьих имён.
+То же приложение умеет работать на сервере, в Docker. Древо хранится так же, как дома, —
+по карточке на человека и `photos/` рядом, — в папке `data/` возле compose-файла на сервере,
+подключённой в контейнер. Перезапуск, перезагрузка и выкладка его не трогают. Свежий
+экземпляр поднимается по-настоящему пустым: образцовое древо вырезано из образа, и на
+странице нет ничьих имён. Своё древо привозите zip-архивом кнопкой **«Загрузить архив»** —
+папка берёт архив, только пока в ней нет ни одной карточки, так что архив может заполнить
+пустой сервер, но не затереть древо. Копию увозите кнопкой **«Скачать архив»**.
 
 Древо у сервера одно, а не по штуке на посетителя: все, кто вошёл тем же паролем, видят одних
 и тех же людей, и **«Очистить»** опустошает древо сразу для всех. **«Выйти»** сбрасывает сессию.
@@ -467,6 +570,9 @@ zip-архивом кнопкой **«Загрузить архив»**, пра�
 по объекту JSON на строку, `{"when":…,"login":…,"address":…,"result":…,"browser":…}`, — так что
 перезапуск и выкладка их не теряют, а со страницы файл открывается как есть. Экранирует сам
 JSON: что бы ни набрали в поле логина, подделать запись или разорвать строку не выйдет.
+Оба журнала пишут адрес самого соединения: `X-Forwarded-For` может прислать кто угодно,
+поэтому он не учитывается, пока не задано `GENEALOGY_TRUST_PROXY=1` — только для своего
+обратного прокси перед контейнером; тогда берётся его запись, последняя.
 
 В каждой строке видно и примерное место адреса — `Warsaw, PL`. Его спрашивают у ipinfo.io, а
 за ним стоят get.geojs.io и ipwho.is: отвечает первый откликнувшийся, так что недоступность
@@ -479,7 +585,7 @@ JSON: что бы ни набрали в поле логина, подделат
 этих двух переменных страницы нет ни для кого.
 
 ```bash
-make check                                   # типы и тесты
+make check                                   # типы, сборка и тесты; make deploy не выкатит, пока они красные
 GENEALOGY_USER=fam GENEALOGY_PASS='secret' make run_local   # сперва посмотреть у себя
 make smoke                                   # проверить поднятый экземпляр
 ```
@@ -487,8 +593,8 @@ make smoke                                   # проверить подняты
 Выкладка на сервер:
 
 ```bash
-PROD_HOST=1.2.3.4 SSHPASS='<пароль root>' \
-GENEALOGY_USER=fam GENEALOGY_PASS='<пароль к древу>' make deploy
+cp .env.example .env    # один раз: адрес сервера и пароли; git его не видит
+make deploy
 ```
 
 Образ собирается здесь и уезжает тарболом; сервер только загружает его и поднимает
@@ -499,10 +605,20 @@ GENEALOGY_USER=fam GENEALOGY_PASS='<пароль к древу>' make deploy
 ходят по-прежнему через HTTP Basic, так что `curl -u`, `make backup` и `make smoke`
 работают как работали.
 
-Раз древо в памяти, **выкладка его стирает**. Сначала заберите архив, потом верните:
+Подбор пароля упирается в блокировку по адресу: после 5 неверных паролей за 15 минут — через
+форму или через HTTP Basic — адрес на 15 минут получает `429 Too Many Requests`, и до тех пор
+его пароли, даже верный, вообще не проверяются. Запросы, посланные разом, считаются каждый.
+Уже открытая сессия остаётся открытой. Числа меняют `GENEALOGY_LOCK_TRIES` и
+`GENEALOGY_LOCK_MINUTES`. Каждый ответ несёт Content-Security-Policy (страница ничего не
+грузит с чужих сайтов, и чужой сайт не может встроить её в рамку), а также `nosniff`,
+`X-Frame-Options: DENY` и `Referrer-Policy: no-referrer`.
+
+Выкладку древо переживает, но диск сервера — всё равно единственная копия. Время от времени
+забирайте её и возвращайте в пустой сервер — в первый раз или после потери данных:
 
 ```bash
-make backup                                  # кладёт backups/persons_<дата>.zip, хранит пять
+make backup                                  # кладёт backups/persons_<дата>.zip вместе с фото, хранит пять
+make restore FILE=backups/persons_<дата>.zip # только в сервер, где древа ещё нет
 ```
 
 Сервер пишет по строке на запрос в `logs/access.log` рядом с compose-файлом: время, адрес
@@ -520,7 +636,7 @@ make applog_grep PATTERN=192.0.2.7           # искать и в сжатой �
 Две вещи, о которых стоит помнить. Пароль при HTTP Basic поверх обычного HTTP идёт
 открытым текстом — в недоверенной сети поставьте впереди TLS или ходите через SSH-туннель.
 И локальная папка `persons/` во всём этом не участвует: на удалённом экземпляре лежит
-только то, что туда загрузили.
+только то, что туда загрузили, — на диске сервера.
 
 ### Разработка
 
@@ -530,7 +646,9 @@ npm run dev         # в другом: vite с горячей перезагру
 ```
 
 ```bash
-npm test                        # тесты (Node 24+): даты, имена, раскладка, порядок в рядах, укладка шин, действия над древом, словарь
+npm test                        # все тесты (Node 24+): даты, имена, раскладка, порядок в рядах, укладка шин, действия над древом, словарь,
+                                #   HTTP-API сервера, снимки раскладки, случайные деревья, разметка интерфейса
+npm run test:update             # после намеренного изменения: переписать снимки и прочитать их дифф
 npm run typecheck
 node tools/metrics.ts           # метрики качества раскладки на persons/
 node tools/metrics.ts /путь/к/копии   # то же на копии данных
@@ -544,40 +662,68 @@ node tools/metrics.ts /путь/к/копии   # то же на копии да
 ### Как устроено
 
 ```
-server.mjs    локальный сервер: отдаёт приложение, читает и пишет persons/. Без зависимостей
-persons/      ваши данные, по файлу на человека
+server.mjs    запускает локальный сервер: отдаёт приложение, читает и пишет persons/. Без зависимостей
+server/       сам сервер, TypeScript, который Node запускает как есть (throttle.ts: блокировка подбора пароля)
+  main.ts       настройки, сборка частей, открытие порта
+  routes.ts     все маршруты в том порядке, в каком они проверяются
+  tree.ts       дерево поверх хранилища, очередь записи и проверка версии
+  stores.ts     хранилища на диске и в памяти за одним интерфейсом
+  auth.ts       пароли, билет входа, кто спрашивает
+  attempts.ts   журнал входов; pages.ts, geo.ts: страница администратора и где находятся адреса
+  accesslog.ts  журнал запросов и его ротация; zip.ts, http.ts, config.ts
+persons/      ваши данные, по файлу на человека; в photos/ — фотографии
 src/
   util.ts     мелочи на весь проект: списки по ключу, среднее, размах, слияние в куски
   i18n.ts     словарь RU/EN, t(lang, key, vars); модель отдаёт ключи сообщений
   model/      данные, без единого обращения к DOM
     types.ts    Person, Link, Pair, TreeState
+    cards.ts    формат файлов: карточки <-> дерево, общий с сервером
     dates.ts    разбор дат: 01.12.1995, 12.1995, «осень 1938», «1880-е гг.», «197?»
     names.ts    формы имени, поиск, определение пола
     tree.ts     связи, проверка петель, приведение файла к валидному виду, скрытие предков, сиблинги
     kin.ts      кто кем приходится: отец, мать, муж, жена, сын, дочь, брат, сестра
-    store.ts    редьюсер, история отмен, запасное хранилище в браузере
+    store.ts    редьюсер и история отмен
   layout/     раскладка и геометрия, тоже без DOM
-    measure.ts  размеры карточки, перенос и обрезка строк
-    layout.ts   поколения, компоненты, семейные ячейки, порядок рядов
+    measure.ts  размеры карточки, перенос и обрезка строк; замер и слова приходят снаружи
+    layout.ts   весь конвейер: карточки, ряды, блок неразмещённых, закреплённые карточки
+    families.ts родители и дети, связные куски, семейные ячейки для раскладки и для линий
+    levels.ts   поколения: кто в каком ряду
+    rows.ts     первый порядок в рядах, обходом
     place.ts    расстановка по x: семьи гроздями по контуру, родители мужа или жены — над ним
     order.ts    перестановка людей в рядах, чтобы линии меньше пересекались
     crossings.ts счётчики пересечений и сближений линий — общие для раскладки и метрик
     timeline.ts расстановка по годам рождения
     route.ts    прокладка связей в обход карточек
+    detour.ts   обход карточек по сетке для линии, которой не годится обычный маршрут
     edges.ts    линии связей: скобка пары, мостики, стрелки к детям
     couple.ts   геометрия пары бок о бок — общая у линий и у оценки порядка рядов
   ui/         React-компоненты, только отрисовка и ввод
     bits.tsx    общие мелочи: поле даты, ряд кнопок, строка человека, «закрыть по щелчку мимо»
-  io/         disk.ts — обмен с сервером; сохранение JSON, выгрузка SVG, PNG и PDF
+    sheet.ts    боковая панель как шторка на телефоне: три высоты, перетаскивание и смахивание
+    screen.ts   медиазапрос телефона и высота панели, которые повторяет таблица стилей (тест держит их вместе)
+    Board.tsx   холст: собирает части из board/ и рисует
+    board/      view.ts: масштаб и сдвиг и арифметика их изменения; gestures.ts: что значит палец или мышь,
+                простым автоматом; useView.ts, useGestures.ts: оба подключены к React;
+                Popovers.tsx: окно добавления и меню линии
+    cards.ts    что раскладке нужно от экрана: канвас для замера текста, слова карточки на нужном языке
+    useSync.ts  движок синхронизации, подключённый к React; keys.ts: что значит нажатая клавиша
+  io/         обмен с сервером и с файлами
+    api.ts      HTTP-API сервера, по функции на запрос
+    photo.ts    выбранная картинка, уменьшенная до JPEG перед отправкой на сервер
+    sync.ts     древо в ногу с сервером: отпечаток версии, очередь записи, автосохранение
+    local.ts    копия в браузере, когда сервера нет
+    files.ts, exportSvg.ts, exportPdf.ts: сохранение JSON, выгрузка SVG, PNG и PDF
   data/       family.json — небольшое образцовое древо, им заполняется пустая persons/
 tools/metrics.ts  метрики качества раскладки
 tools/smoke.mjs   проверка поднятого экземпляра, своего или удалённого
 Dockerfile        образ для удалённой машины: стадия сборки, дальше node и один html
-docker-compose-prod.yml  что крутится на сервере: одна служба, без базы и без тома
+docker-compose-prod.yml  что крутится на сервере: одна служба, без базы, древо в data/
 Makefile          сборка, выкладка, логи, резервная копия
 ```
 
-Раскладка — чистая функция `layout(state) → { pos, level, tl, lonePlate }`. Её результат
+Раскладка — чистая функция `layout(state, cards) → { pos, level, tl, lonePlate }`,
+где `cards` задаёт размер карточки (браузер меряет канвасом, тесты и метрики — по числу
+символов). Её результат
 мемоизуется и раздаётся компонентам; перетаскивание карточки не пересчитывает раскладку,
 а подменяет одну координату.
 
@@ -589,9 +735,9 @@ Makefile          сборка, выкладка, логи, резервная �
   существующего, а не плодит двойника. Имя вводится в порядке «Имя Отчество Фамилия».
 - **Стрелки у карточки** — щёлкните по человеку: сверху «родитель», снизу «ребёнок»,
   сбоку «супруг» и «брат/сестра». Сторона для супруга выбирается там, где свободнее.
-- **Брат или сестра.** Если у человека есть родители в древе, новый становится их
-  ребёнком — обычные линии. Если родителей нет, родство записывается само и рисуется
-  пунктиром; такие люди стоят в одном ряду и рядом.
+- **Брат или сестра.** Если у одного из двоих есть родители в древе, а у другого нет,
+  другой получает тех же родителей — обычные линии. Если родители есть у обоих или ни у
+  кого, родство записывается само и рисуется пунктиром; такие люди стоят в одном ряду и рядом.
 - **Скрыть предков.** Выберите человека и нажмите «Скрыть предков»: его предки и всё, что
   растёт от них, кроме него самого, его семьи и потомков, уходят с холста. «Вернуть всех»
   возвращает. Запоминается в `_view.json`.
@@ -608,17 +754,21 @@ Makefile          сборка, выкладка, логи, резервная �
   каждую связь можно убрать по отдельности.
 - **Линии не проходят сквозь карточки.** Если на пути связи стоит чужой человек,
   вертикаль уходит в ближайший просвет между карточками и возвращается под ним; повороты
-  делаются в зазорах между рядами.
+  делаются в зазорах между рядами. По годам тоже: оценённый год держится в стороне от лет
+  родителей и детей, а линия, которой не годится обычный маршрут «вниз — вбок — вниз»,
+  находит обход сама.
 - **Родня подписана** — у каждого в списке видно, кем он приходится выбранному. Две роли
   сразу показываются вместе одной строкой.
 - **Однополый брак не создаётся**, приложение объяснит отказ. Если пол хоть у одного не
-  указан — не мешает.
+  указан — не мешает. Не создаётся и брак со своим предком или потомком, и связь
+  «родитель — ребёнок», после которой супруги оказались бы предком и потомком.
 - **Тёзки разрешены.** «Добавить» всегда создаёт нового человека; про тёзку предупредит,
   но не помешает.
 - Кого ещё ни с кем не связали, тот стоит отдельным блоком под древом, под пунктирной
   чертой с подписью.
 - Пол определяется по отчеству, фамилии, окончанию имени и словам-ролям; цветная полоска
-  сверху карточки. Поправить можно в панели.
+  сверху карточки. Незнакомое правилам имя (например, латиницей) оставляет пол неизвестным.
+  Поправить можно в панели.
 - Режим **по годам** — вертикаль по году рождения, липкая шкала лет слева. Недостающие
   годы оцениваются по родне и помечаются, причём супруг важнее прочей родни.
 - **Родитель всегда ровно на ряд выше детей.** Если брак уводит человека вниз, вся его
@@ -639,7 +789,22 @@ Makefile          сборка, выкладка, логи, резервная �
 - **Двумя пальцами по трекпаду — двигаем полотно**, щипком — масштаб. Колесо мыши тоже
   двигает полотно (Shift — вбок), масштаб на нём — с ⌘ или Ctrl, кнопками `+`/`−` и
   щипком на сенсорном экране.
-- Ползунок **просвет**, перетаскивание карточек, поиск с подсветкой, отмена (⌘Z),
-  сохранение и открытие JSON.
+- **На телефоне древо занимает весь экран**, а боковая панель становится шторкой снизу.
+  В покое в ней только поиск и кнопка «Добавить»; за полоску её тянут или смахивают вверх
+  до половины экрана или почти во весь экран, а касание полоски открывает и закрывает её.
+  Касание человека на древе поднимает шторку с его полями и держит его на виду над ней;
+  касание пустого холста опускает её обратно. Палец двигает древо, даже если лёг на
+  карточку, — чтобы передвинуть карточку, на ней сначала надо задержать палец; второй
+  палец во время переноса возвращает карточку на место, не сохраняя, и включает масштаб.
+  Кнопки над холстом сворачиваются в один ряд сверху, остальное — за «Ещё». Пока правки не
+  сохраняются, об этом говорит шапка шторки и предлагает перечитать.
+- **Отмена (⌘Z)** возвращает один шаг. Ввод в поле — один шаг на поле; смену просвета и
+  переход «по годам» тоже можно отменить, вместе с закреплёнными карточками. В текстовом
+  поле ⌘Z и ⇧⌘Z относятся к набору в самом поле.
+- **Файлы прощают ошибки.** Карточка с испорченным списком связей всё равно читается,
+  негодный id получает новый, дважды записанная связь считается один раз, незнакомые
+  приложению поля сохраняются и пишутся обратно, а чужой JSON в папке не трогается.
+- Ползунок **просвет**, перетаскивание карточек, поиск с подсветкой, сохранение и открытие
+  JSON.
 - **Выгрузка картинкой**: SVG, PNG и PDF. В PDF попадает всё древо целиком, одной
   страницей размером с него самого, без потерь и без библиотек.
