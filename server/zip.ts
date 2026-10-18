@@ -1,6 +1,6 @@
 /**
  * Zip archives, hand-rolled on node:zlib: the server has no dependencies. Enough for
- * what the tree needs — small text files, stored or deflated, no zip64.
+ * what the tree needs — small text files and the photos, stored or deflated, no zip64.
  */
 import { deflateRawSync, inflateRawSync } from "node:zlib";
 
@@ -25,14 +25,14 @@ const SIG_ENTRY = 0x02014b50;
 const SIG_END = 0x06054b50;
 const DOS_1980 = 0x21; // a fixed date: the same tree gives the same archive
 
-/** Build a zip from "name → text". The files are small and textual, so pack them in one go. */
-export function zipWrite(files: Map<string, string>): Buffer {
+/** Build a zip from "name → text or bytes". The files are small, so pack them in one go. */
+export function zipWrite(files: Map<string, string | Buffer>): Buffer {
   const chunks: Buffer[] = [];
   const index: Buffer[] = [];
   let at = 0;
   for (const [name, text] of files) {
     const nameBuf = Buffer.from(name, "utf8");
-    const raw = Buffer.from(text, "utf8");
+    const raw = typeof text === "string" ? Buffer.from(text, "utf8") : text;
     const packed = deflateRawSync(raw, { level: 9 });
     // if compression did not help, store it as is
     const deflated = packed.length < raw.length;
@@ -91,8 +91,8 @@ export function zipWrite(files: Map<string, string>): Buffer {
 const MAX_ENTRIES = 5000;
 const MAX_UNPACKED = 64e6; // an unpacked archive must not eat the server's memory
 
-/** Parse a zip into "name → text". We read the index at the end, as one should. */
-export function zipRead(buf: Buffer): Map<string, string> {
+/** Parse a zip into "name → bytes". We read the index at the end, as one should. */
+export function zipRead(buf: Buffer): Map<string, Buffer> {
   let end = -1;
   for (let i = buf.length - 22; i >= 0 && i >= buf.length - 22 - 0xffff; i--) {
     if (buf.readUInt32LE(i) === SIG_END) {
@@ -107,7 +107,7 @@ export function zipRead(buf: Buffer): Map<string, string> {
   if (count === 0xffff || listAt === 0xffffffff) throw new Error("this server does not read zip64");
   if (count > MAX_ENTRIES) throw new Error("too many files in the archive");
 
-  const out = new Map<string, string>();
+  const out = new Map<string, Buffer>();
   let p = listAt;
   let unpacked = 0;
   for (let i = 0; i < count; i++) {
@@ -131,7 +131,7 @@ export function zipRead(buf: Buffer): Map<string, string> {
     }
     const from = localAt + 30 + buf.readUInt16LE(localAt + 26) + buf.readUInt16LE(localAt + 28);
     const body = buf.subarray(from, from + packedSize);
-    out.set(name, (method === 8 ? inflateRawSync(body) : body).toString("utf8"));
+    out.set(name, method === 8 ? inflateRawSync(body) : Buffer.from(body));
   }
   return out;
 }

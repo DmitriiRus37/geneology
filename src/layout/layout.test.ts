@@ -5,7 +5,7 @@ import { addPair, addPerson, link, normalize, parentsOf } from "../model/tree.ts
 import type { TreeState } from "../model/types.ts";
 import { computeEdges } from "./edges.ts";
 import { bboxOf, layout } from "./layout.ts";
-import { NODE_W } from "./measure.ts";
+import { NODE_W, PHOTO_R } from "./measure.ts";
 import { hitsCard, type Rect } from "./route.ts";
 import { nodeCards } from "../testing/cards.ts";
 
@@ -349,4 +349,34 @@ test("a sister was carried down by her daughter's marriage — her siblings move
   assert.equal(level[father], level[anna] - 1);
   assert.equal(level[daughter], level[anna] + 1);
   assert.equal(level[daughter], level[top], "the spouses are level");
+});
+
+test("a card with a photo is at least as tall as the photo, and its text wraps narrower", () => {
+  const cards = nodeCards();
+  const name = "Константин Константинович Константинопольский";
+  const base = { id: "x", name, maiden: "", alt: [], born: "", died: "", sex: "m" as const, n: 1 };
+  const plain = cards(base);
+  const shown = cards({ ...base, photo: "0123456789abcdef.jpg" });
+  assert.ok(shown.h >= 2 * PHOTO_R + 16);
+  assert.ok(shown.lines.length >= plain.lines.length);
+  assert.ok(cards({ ...base, name: "A", photo: "0123456789abcdef.jpg" }).h > cards({ ...base, name: "A" }).h);
+  // the same person without a photo is sized exactly as before photos existed
+  assert.deepEqual(cards({ ...base, photo: "" }), plain);
+});
+
+test("cards with photos still do not collide", () => {
+  const s = real();
+  for (const id of Object.keys(s.people).filter((_, i) => i % 3 === 0)) s.people[id].photo = "0123456789abcdef.jpg";
+  for (const timeline of [false, true]) {
+    s.timeline = timeline;
+    const { pos } = layout(s, nodeCards());
+    const r = Object.values(pos);
+    for (let i = 0; i < r.length; i++) {
+      for (let j = i + 1; j < r.length; j++) {
+        const dx = Math.abs(r[i].x - r[j].x) - (r[i].w + r[j].w) / 2;
+        const dy = Math.max(r[i].y, r[j].y) - Math.min(r[i].y + r[i].h, r[j].y + r[j].h);
+        assert.ok(dx >= -0.5 || dy >= -0.5, `cards overlap in ${timeline ? "years" : "generations"} mode`);
+      }
+    }
+  }
 });

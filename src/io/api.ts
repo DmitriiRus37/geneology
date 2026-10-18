@@ -123,3 +123,18 @@ export const BEACON_LIMIT = 65536;
 /** The body of the last write as the tab closes, for `navigator.sendBeacon`. */
 export const beaconBody = (rev: string, tree: TreeState): Blob =>
   new Blob([JSON.stringify({ rev, tree })], { type: "application/json" });
+
+/** Where the app fetches a photo from; the session cookie goes along by itself. */
+export const photoUrl = (name: string): string => "/api/photo/" + name;
+
+/** Store a JPEG on the server: the name it is kept under, or what went wrong. */
+export async function postPhoto(fetch: Fetch, jpeg: Blob): Promise<{ photo: string } | { error: string }> {
+  try {
+    const r = await fetch("/api/photo", { method: "POST", headers: { "content-type": "image/jpeg" }, body: jpeg });
+    const body = await r.json().catch(() => null);
+    if (!r.ok || !body?.ok || typeof body.photo !== "string") return { error: String(body?.error || r.status) };
+    return { photo: body.photo };
+  } catch (e) {
+    return { error: String((e as Error)?.message ?? e) };
+  }
+}

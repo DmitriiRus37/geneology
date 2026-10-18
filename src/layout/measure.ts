@@ -15,6 +15,12 @@ export const MIN_CARD_H = 46;
 const PAD_Y = 24;
 /** Room for text across a card. */
 const TEXT_W = NODE_W - 24;
+/** The round photo at the left of a card that has one. */
+export const PHOTO_R = 20;
+/** How far the photo pushes the text of its card to the right; the text loses twice that in width. */
+export const PHOTO_SHIFT = 20;
+/** A card with a photo is never lower than the photo with a margin. */
+const PHOTO_CARD_H = 2 * PHOTO_R + 16;
 /** A long name wraps to at most this many lines. */
 const NAME_LINES = 3;
 
@@ -89,25 +95,27 @@ export function clip(measure: Measure, text: string, font: string, max: number):
 
 /** The sizer for a way of measuring and a language, with a cache of its own. */
 export function cardSizer(measure: Measure, text: CardText): CardSizer {
-  const build = (p: Person, maiden: string, dates: string): CardSize => {
+  const build = (p: Person, maiden: string, dates: string, photo: boolean): CardSize => {
+    const w = photo ? TEXT_W - 2 * PHOTO_SHIFT : TEXT_W;
     const lines: CardLine[] = [];
-    for (const t of wrap(measure, p.name || "?", FONT_NAME, TEXT_W, NAME_LINES)) lines.push({ t, c: "name", h: LINE_H.name });
-    if (p.maiden) lines.push({ t: clip(measure, maiden, FONT_MAIDEN, TEXT_W), c: "maiden", h: LINE_H.maiden });
-    if (dates) lines.push({ t: clip(measure, dates, FONT_YRS, TEXT_W), c: "yrs", h: LINE_H.yrs });
-    if (p.alt && p.alt.length) lines.push({ t: clip(measure, p.alt.join(", "), FONT_ALT, TEXT_W), c: "alt", h: LINE_H.alt });
+    for (const t of wrap(measure, p.name || "?", FONT_NAME, w, NAME_LINES)) lines.push({ t, c: "name", h: LINE_H.name });
+    if (p.maiden) lines.push({ t: clip(measure, maiden, FONT_MAIDEN, w), c: "maiden", h: LINE_H.maiden });
+    if (dates) lines.push({ t: clip(measure, dates, FONT_YRS, w), c: "yrs", h: LINE_H.yrs });
+    if (p.alt && p.alt.length) lines.push({ t: clip(measure, p.alt.join(", "), FONT_ALT, w), c: "alt", h: LINE_H.alt });
     let h = PAD_Y + CHIP_BAND;
     for (const l of lines) h += l.h;
-    return { lines, h: Math.max(h, MIN_CARD_H) };
+    return { lines, h: Math.max(h, photo ? PHOTO_CARD_H : MIN_CARD_H) };
   };
 
   const cache = new Map<string, CardSize>();
   return (p) => {
     const maiden = p.maiden ? text.maiden(p.maiden) : "";
     const dates = text.dates(p);
-    const key = [p.name, p.maiden, maiden, dates, (p.alt || []).join("\u0001")].join("\u0000");
+    const photo = !!p.photo;
+    const key = [p.name, p.maiden, maiden, dates, (p.alt || []).join("\u0001"), photo ? "photo" : ""].join("\u0000");
     let v = cache.get(key);
     if (!v) {
-      v = build(p, maiden, dates);
+      v = build(p, maiden, dates, photo);
       if (cache.size > 4000) cache.clear();
       cache.set(key, v);
     }

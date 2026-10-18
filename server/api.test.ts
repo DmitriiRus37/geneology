@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { basic, card, getTree, login, postInTwoParts, postTree, startServer, unzip, zip, type Running } from "./testing.ts";
+import { basic, card, getTree, jpeg, login, postInTwoParts, postPhoto, postTree, startServer, unzip, unzipBytes, zip, type Running } from "./testing.ts";
 
 /** A small tree with everything the format carries. The names are made up. */
 const TREE = {
@@ -522,5 +522,128 @@ describe("edge cases of the stores", () => {
     } finally {
       await srv.stop();
     }
+  });
+});
+
+describe("photos", () => {
+  let srv: Running;
+  before(async () => {
+    srv = await startServer({ store: "disk" });
+  });
+  after(() => srv.stop());
+
+  test("a JPEG is stored under a name made of its contents, and served back", async () => {
+    const bytes = jpeg("one");
+    const a = await postPhoto(srv.base, bytes);
+    assert.equal(a.status, 200);
+    assert.match(a.body.photo, /^[0-9a-f]{16}\.jpg$/);
+    assert.deepEqual(readFileSync(join(srv.dir, "photos", a.body.photo)), bytes);
+    const again = await postPhoto(srv.base, bytes);
+    assert.equal(again.body.photo, a.body.photo);
+
+    const r = await fetch(srv.base + "/api/photo/" + a.body.photo);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("content-type"), "image/jpeg");
+    assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+    assert.match(r.headers.get("cache-control") ?? "", /immutable/);
+    assert.deepEqual(Buffer.from(await r.arrayBuffer()), bytes);
+  });
+
+  test("anything but a JPEG is refused", async () => {
+    const r = await postPhoto(srv.base, Buffer.from("<svg onload=alert(1)>"));
+    assert.equal(r.status, 400);
+  });
+
+  test("an unknown or malformed photo name is a 404", async () => {
+    for (const name of ["0123456789abcdef.jpg", "..%2Fp1.json", "x.jpg", ""]) {
+      assert.equal((await fetch(srv.base + "/api/photo/" + name)).status, 404, name);
+    }
+  });
+
+  test("photos do not move the fingerprint", async () => {
+    const before = (await getTree(srv.base)).body.rev;
+    await postPhoto(srv.base, jpeg("fingerprint"));
+    assert.equal((await getTree(srv.base)).body.rev, before);
+  });
+
+  test("a card keeps a well-formed photo name and drops any other", async () => {
+    const { body: ph } = await postPhoto(srv.base, jpeg("card"));
+    const { body: now } = await getTree(srv.base);
+    const tree = {
+      people: {
+        p1: { id: "p1", name: "A", sex: "m", n: 1, photo: ph.photo },
+        p2: { id: "p2", name: "B", sex: "f", n: 2, photo: "../../etc/passwd" },
+      },
+      links: [],
+      pairs: [],
+      sibs: [],
+      seq: 2,
+    };
+    assert.equal((await postTree(srv.base, now.rev, tree)).status, 200);
+    assert.equal(json(srv.dir, "p1.json").photo, ph.photo);
+    assert.equal("photo" in json(srv.dir, "p2.json"), false);
+    const { body: back } = await getTree(srv.base);
+    assert.equal(back.tree.people.p1.photo, ph.photo);
+  });
+
+  test("the download carries the photos the cards show, and no other", async () => {
+    const { body: shown } = await postPhoto(srv.base, jpeg("shown"));
+    await postPhoto(srv.base, jpeg("nobody's"));
+    const { body: now } = await getTree(srv.base);
+    const tree = { people: { p1: { id: "p1", name: "A", sex: "m", n: 1, photo: shown.photo } }, links: [], pairs: [], sibs: [], seq: 1 };
+    await postTree(srv.base, now.rev, tree);
+    const files = unzipBytes(Buffer.from(await (await fetch(srv.base + "/api/download")).arrayBuffer()));
+    const photos = Object.keys(files).filter((n) => n.startsWith("persons/photos/"));
+    assert.deepEqual(photos, ["persons/photos/" + shown.photo]);
+    assert.deepEqual(files[photos[0]], jpeg("shown"));
+  });
+});
+
+describe("photos on a server in memory", () => {
+  let srv: Running;
+  before(async () => {
+    srv = await startServer({ store: "memory" });
+  });
+  after(() => srv.stop());
+
+  test("an archive brings its photos, and they are served", async () => {
+    const name = "0123456789abcdef.jpg";
+    const archive = zip({
+      "persons/p1.json": card("p1", "A", { photo: name }),
+      ["persons/photos/" + name]: jpeg("from the archive"),
+      "persons/photos/fedcba9876543210.jpg": Buffer.from("not a jpeg"),
+      ["__MACOSX/persons/photos/._" + name]: "junk",
+    });
+    const r = await fetch(srv.base + "/api/upload", { method: "POST", body: new Uint8Array(archive) });
+    assert.equal(r.status, 200);
+    const got = await fetch(srv.base + "/api/photo/" + name);
+    assert.equal(got.status, 200);
+    assert.deepEqual(Buffer.from(await got.arrayBuffer()), jpeg("from the archive"));
+    assert.equal((await fetch(srv.base + "/api/photo/fedcba9876543210.jpg")).status, 404);
+    // and it leaves with the next download
+    const files = unzipBytes(Buffer.from(await (await fetch(srv.base + "/api/download")).arrayBuffer()));
+    assert.deepEqual(files["persons/photos/" + name], jpeg("from the archive"));
+  });
+
+  test("a photo posted to memory is served until the next archive replaces it", async () => {
+    const { body } = await postPhoto(srv.base, jpeg("memory"));
+    assert.equal((await fetch(srv.base + "/api/photo/" + body.photo)).status, 200);
+    await fetch(srv.base + "/api/upload", { method: "POST", body: new Uint8Array(zip({ "persons/p1.json": card("p1", "A") })) });
+    assert.equal((await fetch(srv.base + "/api/photo/" + body.photo)).status, 404);
+  });
+});
+
+describe("photos behind a password", () => {
+  let srv: Running;
+  before(async () => {
+    srv = await startServer({ store: "memory", user: ["fam", "secret"] });
+  });
+  after(() => srv.stop());
+
+  test("neither posting nor fetching a photo works without one", async () => {
+    assert.equal((await postPhoto(srv.base, jpeg("x")).catch(() => ({ status: 401 }))).status, 401);
+    const { body } = await postPhoto(srv.base, jpeg("x"), basic("fam", "secret"));
+    assert.equal((await fetch(srv.base + "/api/photo/" + body.photo)).status, 401);
+    assert.equal((await fetch(srv.base + "/api/photo/" + body.photo, { headers: basic("fam", "secret") })).status, 200);
   });
 });

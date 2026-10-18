@@ -27,6 +27,7 @@ const RU: Record<string, string> = {
   "notice.fileFailed": "Не получилось прочитать файл",
   "notice.zipLoaded": "Из архива загружено людей: {n}",
   "notice.zipFailed": "Архив не загрузился: {detail}",
+  "notice.photoFailed": "Фото не загрузилось: {detail}",
   "notice.saveFailed": "Не удалось сохранить — повторю через несколько секунд",
   "notice.saved": "Сохранено",
   "notice.restarted": "Сервер был перезапущен и пуст — древо из этой вкладки записано заново",
@@ -156,6 +157,10 @@ const RU: Record<string, string> = {
   "ed.hideAboveTitle":
     "Срезать древо вверх: спрятать предков этого человека и всё, что растёт от них, кроме него самого, его семьи и потомков",
   "ed.delete": "Удалить человека",
+  "ed.photoAdd": "Добавить фото",
+  "ed.photoChange": "Заменить фото",
+  "ed.photoRemove": "Убрать фото",
+  "ed.photoBusy": "Загружается…",
 
   "em.remove": "Убрать связь",
   "em.parentsOf": "Родители: {name}",
@@ -226,6 +231,7 @@ const EN: Record<string, string> = {
   "notice.fileFailed": "Could not read the file",
   "notice.zipLoaded": "Loaded {n} people from the archive",
   "notice.zipFailed": "The archive did not load: {detail}",
+  "notice.photoFailed": "The photo did not load: {detail}",
   "notice.saveFailed": "Could not save — trying again in a few seconds",
   "notice.saved": "Saved",
   "notice.restarted": "The server restarted empty — the tree from this tab was written back",
@@ -354,6 +360,10 @@ const EN: Record<string, string> = {
   "ed.hideAboveTitle":
     "Cut the tree above: hide this person's ancestors and everything that grows from them, except the person, their spouse and descendants",
   "ed.delete": "Delete person",
+  "ed.photoAdd": "Add photo",
+  "ed.photoChange": "Change photo",
+  "ed.photoRemove": "Remove photo",
+  "ed.photoBusy": "Uploading…",
 
   "em.remove": "Remove link",
   "em.parentsOf": "Parents of {name}",

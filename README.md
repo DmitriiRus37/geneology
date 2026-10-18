@@ -98,6 +98,15 @@ extra record. Canvas settings live in `persons/_view.json`: the mode, the spacin
 - changing a date, a name, the sex or dragging a card rewrites only that person's file;
 - deleting a person deletes the file.
 
+Photos lie in `persons/photos/`. **Add photo** in the person's panel takes any picture the
+browser can open, scales it down to 640 px on the longer side and stores it as a JPEG named
+after its contents, for example `photos/858131a276d14932.jpg`; the card keeps only that
+name in a `photo` field. A photo file never changes, and removing a photo from a person
+leaves the file in place, so undo can bring it back. **Download archive** takes the photos
+the cards show along with the cards, and **Upload archive** brings them back. Photos need
+the server: without one the button is not shown. SVG, PNG and PDF pictures show an empty
+round frame where a photo stands.
+
 The server writes through a temporary file and a rename, so an interrupted write never
 damages what is already on disk.
 
@@ -249,7 +258,7 @@ server/       the server itself, TypeScript that Node runs as it is
   auth.ts       passwords, the login ticket, who is asking
   attempts.ts   the sign-in log; pages.ts, geo.ts: the admin page and where addresses are
   accesslog.ts  the request log and its rotation; zip.ts, http.ts, config.ts
-persons/      your data, one file per person
+persons/      your data, one file per person; photos/ holds the photos
 src/
   util.ts     small shared helpers: lists by key, mean, extent, merging into components
   i18n.ts     RU/EN dictionary, t(lang, key, vars); the model returns message keys
@@ -287,6 +296,7 @@ src/
     useSync.ts  the sync engine wired into React; keys.ts: what a key press means
   io/         talking to the server and to files
     api.ts      the server's HTTP API, one request per function
+    photo.ts    a chosen picture scaled down to a JPEG before it goes to the server
     sync.ts     keeping the tree in step with the server: fingerprint, write queue, autosave
     local.ts    the browser's copy when there is no server
     files.ts, exportSvg.ts, exportPdf.ts: JSON save/open, SVG, PNG and PDF export
@@ -482,6 +492,15 @@ node server.mjs --port 8080            # другой порт
 - поправили дату, имя, пол, перетащили карточку — переписался только его файл;
 - удалили человека — файл исчез вместе с ним.
 
+Фотографии лежат в `persons/photos/`. Кнопка **«Добавить фото»** на панели человека берёт
+любую картинку, которую открывает браузер, уменьшает её до 640 px по длинной стороне и
+сохраняет JPEG с именем по содержимому, например `photos/858131a276d14932.jpg`; в карточке
+остаётся только это имя, в поле `photo`. Файл фотографии никогда не меняется, а если убрать
+фото у человека, файл остаётся на месте — отмена вернёт его. **«Скачать архив»** забирает
+вместе с карточками фотографии, которые они показывают, **«Загрузить архив»** возвращает их.
+Фото нужен сервер: без него кнопки нет. На картинках SVG, PNG и PDF на месте фото —
+пустая круглая рамка.
+
 Сервер пишет через временный файл с переименованием, так что оборванная запись не
 испортит уже лежащий на диске.
 
@@ -631,7 +650,7 @@ server/       сам сервер, TypeScript, который Node запуск�
   auth.ts       пароли, билет входа, кто спрашивает
   attempts.ts   журнал входов; pages.ts, geo.ts: страница администратора и где находятся адреса
   accesslog.ts  журнал запросов и его ротация; zip.ts, http.ts, config.ts
-persons/      ваши данные, по файлу на человека
+persons/      ваши данные, по файлу на человека; в photos/ — фотографии
 src/
   util.ts     мелочи на весь проект: списки по ключу, среднее, размах, слияние в куски
   i18n.ts     словарь RU/EN, t(lang, key, vars); модель отдаёт ключи сообщений
@@ -669,6 +688,7 @@ src/
     useSync.ts  движок синхронизации, подключённый к React; keys.ts: что значит нажатая клавиша
   io/         обмен с сервером и с файлами
     api.ts      HTTP-API сервера, по функции на запрос
+    photo.ts    выбранная картинка, уменьшенная до JPEG перед отправкой на сервер
     sync.ts     древо в ногу с сервером: отпечаток версии, очередь записи, автосохранение
     local.ts    копия в браузере, когда сервера нет
     files.ts, exportSvg.ts, exportPdf.ts: сохранение JSON, выгрузка SVG, PNG и PDF

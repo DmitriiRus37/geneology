@@ -209,6 +209,8 @@ export function Sidebar({ filter, setFilter, onAdd, onAddRelation, onPick, onGoT
               onPick(mode);
             }}
             onGoTo={onGoTo}
+            // photos live on the server: without one there is nowhere to keep them
+            photos={where?.kind === "disk"}
           />
         ) : (
           <div className="block hint">

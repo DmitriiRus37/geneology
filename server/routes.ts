@@ -2,18 +2,19 @@
  * Every route, in the order they are tried: the open ones, then the guard, then
  * the administrator's, then the API by path, then the app itself.
  */
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
-import { cardIdOf } from "../src/model/cards.ts";
+import { cardIdOf, okPhoto } from "../src/model/cards.ts";
 import type { AccessLog } from "./accesslog.ts";
 import type { Attempts } from "./attempts.ts";
 import { COOKIE, type Auth, type Role } from "./auth.ts";
 import type { Geo } from "./geo.ts";
 import { json, MIME, page, readBody, readBuffer, redirect } from "./http.ts";
 import { ADMIN_ROWS, adminPage, loginPage, notForYou } from "./pages.ts";
-import { cardsOf, type Tree } from "./tree.ts";
+import { cardsOf, isJpeg, photosOf, type Tree } from "./tree.ts";
 import { zipRead, zipWrite } from "./zip.ts";
 
 export interface Services {
@@ -42,9 +43,10 @@ interface ExactRoute {
   run(ctx: Ctx): unknown;
 }
 
-/** Matched on the path, after the guard. */
+/** Matched on the path, after the guard; with `prefix`, on its beginning. */
 interface PathRoute {
   path: string;
+  prefix?: boolean;
   method: string;
   run(ctx: Ctx & { url: URL }): unknown;
 }
@@ -53,6 +55,9 @@ interface PathRoute {
 const now = () => new Date().toISOString().slice(11, 19);
 
 const home = (r: Role) => (r === "admin" ? "/admin" : "/");
+
+/** The app shrinks a photo before sending it: a few hundred kilobytes at most. */
+const MAX_PHOTO = 4e6;
 
 export function createHandler(s: Services): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   const { auth, attempts, geo, tree } = s;
@@ -188,9 +193,11 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
         if (tree.store.kind !== "memory") {
           return json(res, 409, { ok: false, error: "the server writes into a folder on disk — an archive cannot be uploaded here" });
         }
-        let cards;
+        let cards, photos;
         try {
-          cards = cardsOf(zipRead(await readBuffer(req)));
+          const entries = zipRead(await readBuffer(req));
+          cards = cardsOf(entries);
+          photos = photosOf(entries);
         } catch (e) {
           return json(res, 400, { ok: false, error: String(e && (e as Error).message) });
         }
@@ -198,19 +205,21 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
         if (![...cards].some(([name, text]) => cardIdOf(name, text))) {
           return json(res, 400, { ok: false, error: "there are no cards (.json) in the archive" });
         }
-        const out = await tree.upload(cards);
+        const out = await tree.upload(cards, photos);
         const people = Object.keys(out.tree?.people ?? {}).length;
         console.log(now() + "  archive loaded, people: " + people);
         return json(res, 200, { ok: true, people, ...out });
       },
     },
-    // The same files that would lie in persons/, only as one archive.
+    // The same files that would lie in persons/, only as one archive: the cards, and
+    // the photos the cards show — a photo nobody shows any more stays behind.
     {
       path: "/api/download",
       method: "GET",
       async run({ res }) {
-        const files = new Map<string, string>();
+        const files = new Map<string, string | Buffer>();
         for (const [n, text] of await tree.files()) files.set("persons/" + n, text);
+        for (const [n, bytes] of await tree.photos()) files.set("persons/photos/" + n, bytes);
         const zip = zipWrite(files);
         res.writeHead(200, {
           "content-type": "application/zip",
@@ -219,6 +228,41 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
           "cache-control": "no-store",
         });
         return res.end(zip);
+      },
+    },
+    // A photo is a JPEG; it is named after its contents, so sending one twice stores it once.
+    {
+      path: "/api/photo",
+      method: "POST",
+      async run({ req, res }) {
+        let bytes;
+        try {
+          bytes = await readBuffer(req, MAX_PHOTO);
+        } catch (e) {
+          return json(res, 413, { ok: false, error: String(e && (e as Error).message) });
+        }
+        if (!isJpeg(bytes)) return json(res, 400, { ok: false, error: "a photo must be a JPEG" });
+        const photo = createHash("sha256").update(bytes).digest("hex").slice(0, 16) + ".jpg";
+        await tree.store.putPhoto(photo, bytes);
+        return json(res, 200, { ok: true, photo });
+      },
+    },
+    {
+      path: "/api/photo/",
+      prefix: true,
+      method: "GET",
+      async run({ res, url }) {
+        const name = url.pathname.slice("/api/photo/".length);
+        const bytes = okPhoto(name) ? await tree.store.photo(name) : null;
+        if (!bytes) return json(res, 404, { ok: false, error: "no such photo" });
+        res.writeHead(200, {
+          "content-type": MIME[".jpg"],
+          "content-length": bytes.length,
+          // the name changes with the contents, so a photo once fetched never needs asking again
+          "cache-control": "private, max-age=31536000, immutable",
+          "x-content-type-options": "nosniff",
+        });
+        return res.end(bytes);
       },
     },
   ];
@@ -255,7 +299,7 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
       if (own) return void (await own.run(ctx));
 
       const url = new URL(req.url as string, "http://" + (req.headers.host ?? "127.0.0.1"));
-      const route = api.find((r) => r.path === url.pathname && r.method === req.method);
+      const route = api.find((r) => (r.prefix ? url.pathname.startsWith(r.path) : r.path === url.pathname) && r.method === req.method);
       if (route) return void (await route.run({ ...ctx, url }));
       if (url.pathname.startsWith("/api/")) return json(res, 404, { ok: false, error: "no such method" });
       await app({ ...ctx, url });

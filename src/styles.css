@@ -205,6 +205,29 @@ textarea:focus-visible {
   margin: 10px 0 0;
 }
 
+.photo-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.photo-big {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--panel-line);
+}
+.photo-big.none {
+  background: var(--panel-2);
+}
+.photo-btns {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
 #editor input[type="text"] {
   width: 100%;
   background: var(--panel-2);
@@ -386,6 +409,11 @@ svg#tree.picking {
 }
 .node circle.chip {
   stroke: none;
+}
+.node circle.photo {
+  fill: #e6ebf0;
+  stroke: #c3cdd8;
+  stroke-width: 1;
 }
 .node text.mark {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;

@@ -41,8 +41,13 @@ the server breaks only in production.
 The card format is one contract, `src/model/cards.ts` (`cardsToTree`, `treeToCards`,
 `okId`, `cardIdOf`): a file is a person's card only if it parses to an object with a string
 `name` or `id`, and a save deletes only files that were cards — anything else in the folder
-is never read, rewritten or deleted. `okId` also refuses `Object.prototype` names. On the
-client `normalize` in `src/model/tree.ts` gives people with unusable ids fresh ones, drops
+is never read, rewritten or deleted. `okId` also refuses `Object.prototype` names.
+Photos are JPEGs in `photos/` beside the cards (`PHOTOS`, `okPhoto`): named by the first
+16 hex digits of their sha256, never rewritten, outside the fingerprint, uploaded on
+`POST /api/photo` and served on `GET /api/photo/<name>`. A card holds only the name in
+`photo`; the image never goes into the tree (the beacon is capped at 64 KB, the undo
+history keeps 60 trees). The archive carries the photos the cards show; nothing deletes
+an unused photo. On the client `normalize` in `src/model/tree.ts` gives people with unusable ids fresh ones, drops
 duplicate links and keeps unknown card fields in `Person.extra`, which `treeToCards` writes
 back.
 

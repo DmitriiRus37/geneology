@@ -3,7 +3,7 @@
  * write queue with the fingerprint check that keeps a stale tab from overwriting
  * fresh edits.
  */
-import { cardIdOf, cardsToTree, okId, treeToCards, VIEW, type WireTree } from "../src/model/cards.ts";
+import { cardIdOf, cardsToTree, okId, okPhoto, PHOTOS, treeToCards, VIEW, type WireTree } from "../src/model/cards.ts";
 import type { Store } from "./stores.ts";
 
 /**
@@ -12,14 +12,29 @@ import type { Store } from "./stores.ts";
  * land the same way. macOS litter (`__MACOSX`, `._name`, `.DS_Store`) is dropped
  * silently: it is always in there.
  */
-export function cardsOf(entries: Map<string, string>): Map<string, string> {
+export function cardsOf(entries: Map<string, Buffer>): Map<string, string> {
   const out = new Map<string, string>();
-  for (const [name, text] of entries) {
+  for (const [name, bytes] of entries) {
     if (name.includes("__MACOSX/")) continue;
     const base = name.slice(name.lastIndexOf("/") + 1);
     if (base.startsWith("._") || base === ".DS_Store" || !base.endsWith(".json")) continue;
     if (base !== VIEW && !okId(base.slice(0, -5))) continue;
-    out.set(base, text);
+    out.set(base, bytes.toString("utf8"));
+  }
+  return out;
+}
+
+/** Whether these bytes start the way every JPEG does. */
+export const isJpeg = (b: Buffer): boolean => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+
+/** The photos of an archive: JPEGs in a `photos/` folder, under the names the app gives them. */
+export function photosOf(entries: Map<string, Buffer>): Map<string, Buffer> {
+  const out = new Map<string, Buffer>();
+  for (const [name, bytes] of entries) {
+    if (name.includes("__MACOSX/")) continue;
+    const parts = name.split("/");
+    const base = parts[parts.length - 1];
+    if (parts[parts.length - 2] === PHOTOS && okPhoto(base) && isJpeg(bytes)) out.set(base, bytes);
   }
   return out;
 }
@@ -33,10 +48,12 @@ export interface Tree {
   read(): Promise<WireTree | null>;
   /** Write `tree` if the store is still at `rev`; writes go in turn. */
   save(rev: string, tree: unknown): Promise<SaveResult>;
-  /** Replace everything with the cards of an archive (memory only), in turn with the writes. */
-  upload(cards: Map<string, string>): Promise<{ tree: WireTree | null; rev: string }>;
+  /** Replace everything with the cards and photos of an archive (memory only), in turn with the writes. */
+  upload(cards: Map<string, string>, photos: Map<string, Buffer>): Promise<{ tree: WireTree | null; rev: string }>;
   /** Every file of the store by name, in name order. */
   files(): Promise<Map<string, string>>;
+  /** The photos the cards show, by name; one a card names but the store lacks is left out. */
+  photos(): Promise<Map<string, Buffer>>;
 }
 
 export function createTree(store: Store): Tree {
@@ -84,14 +101,23 @@ export function createTree(store: Store): Tree {
         const st = await write(tree);
         return { ...st, rev: await store.rev() };
       }),
-    upload: (cards) =>
+    upload: (cards, photos) =>
       inTurn(async () => {
-        if (store.kind === "memory") store.replace(cards);
+        if (store.kind === "memory") store.replace(cards, photos);
         return { tree: await read(), rev: await store.rev() };
       }),
     async files() {
       const out = new Map<string, string>();
       for (const n of [...((await store.names()) ?? [])].sort()) out.set(n, await store.read(n));
+      return out;
+    },
+    async photos() {
+      const out = new Map<string, Buffer>();
+      const names = Object.values((await read())?.people ?? {}).map((p) => p.photo);
+      for (const name of [...new Set(names.filter(okPhoto))].sort()) {
+        const bytes = await store.photo(name);
+        if (bytes) out.set(name, bytes);
+      }
       return out;
     },
   };

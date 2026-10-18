@@ -1,7 +1,7 @@
 import { msg, type Msg } from "../i18n.ts";
 import { normalizeDateInput, splitRange } from "./dates.ts";
 import { guessSex } from "./names.ts";
-import { okId, PERSON_FIELDS } from "./cards.ts";
+import { okId, okPhoto, PERSON_FIELDS } from "./cards.ts";
 import { emptyState, isPair, otherIn, pairKey, type Pair, type Person, type Sex, type TreeState } from "./types.ts";
 
 export const clone = <T,>(v: T): T => structuredClone(v);
@@ -321,6 +321,7 @@ export function normalize(raw: unknown): TreeState {
       person.fx = p.fx;
       person.fy = p.fy;
     }
+    if (okPhoto(p.photo)) person.photo = p.photo;
     // what the app does not know: from a card, its own fields; from the app's own state,
     // the `extra` it already keeps
     const extra = Object.entries(isObject(p.extra) ? p.extra : {})

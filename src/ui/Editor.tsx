@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { msg } from "../i18n.ts";
+import { photoUrl, postPhoto } from "../io/api.ts";
+import { shrinkPhoto } from "../io/photo.ts";
 import { yearTag } from "../model/dates.ts";
 import { kinOf, type KinRow } from "../model/kin.ts";
 import { colorOf } from "../model/names.ts";
@@ -13,6 +16,8 @@ interface Props {
   onAddRelation: (mode: Relation) => void;
   onPick: (mode: Relation) => void;
   onGoTo: (id: string) => void;
+  /** a server is there to keep photos */
+  photos: boolean;
 }
 
 const splitList = (v: string): string[] =>
@@ -47,7 +52,50 @@ const SEX: { v: Sex; t: string }[] = [
   { v: "u", t: "ed.unknown" },
 ];
 
-export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
+/** The person's photo, and the buttons to give, change or take it away. */
+function Photo({ p }: { p: Person }) {
+  const { d, t } = useApp();
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    let out: { photo: string } | { error: string };
+    try {
+      out = await postPhoto(fetch, await shrinkPhoto(file));
+    } catch (e) {
+      out = { error: String((e as Error)?.message ?? e) };
+    }
+    setBusy(false);
+    if ("error" in out) d({ type: "notice", msg: msg("notice.photoFailed", { detail: out.error }) });
+    else d({ type: "update", id: p.id, patch: { photo: out.photo } });
+  };
+
+  return (
+    <div className="photo-row">
+      {p.photo ? <img className="photo-big" src={photoUrl(p.photo)} alt="" /> : <div className="photo-big none" />}
+      <div className="photo-btns">
+        <button disabled={busy} onClick={() => input.current?.click()}>
+          {busy ? t("ed.photoBusy") : p.photo ? t("ed.photoChange") : t("ed.photoAdd")}
+        </button>
+        {p.photo && !busy && <button onClick={() => d({ type: "update", id: p.id, patch: { photo: "" } })}>{t("ed.photoRemove")}</button>}
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          void pick(e.target.files?.[0]);
+          e.target.value = ""; // the same file chosen again is a change too
+        }}
+      />
+    </div>
+  );
+}
+
+export function Editor({ p, onAddRelation, onPick, onGoTo, photos }: Props) {
   const { s, d, t, lang } = useApp();
   const [name, setName] = useText(p.name, same);
   const [maiden, setMaiden] = useText(p.maiden, trim);
@@ -80,6 +128,8 @@ export function Editor({ p, onAddRelation, onPick, onGoTo }: Props) {
         {t("ed.parents", { n: parents.length })} · {t("ed.children", { n: kids.length })}
         {spouses.length ? " · " + t("ed.married", { n: spouses.length }) : ""}
       </p>
+
+      {photos && <Photo p={p} />}
 
       <input
         type="text"

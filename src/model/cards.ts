@@ -24,7 +24,7 @@ export const okId = (v: unknown): v is string =>
  * `extra` — that is the last name here — and written back into the card on save.
  */
 export const PERSON_FIELDS: readonly string[] = [
-  "id", "name", "maiden", "alt", "born", "died", "sex", "n", "fx", "fy", "years",
+  "id", "name", "maiden", "alt", "born", "died", "sex", "n", "fx", "fy", "photo", "years",
   "parents", "spouses", "siblings", "extra",
 ];
 const FIELDS = new Set(PERSON_FIELDS);
@@ -38,6 +38,14 @@ const extraOf = (v: unknown): Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v)
     ? Object.fromEntries(Object.entries(v).filter(([k]) => !FIELDS.has(k)))
     : {};
+
+/**
+ * A photo is a JPEG kept beside the cards, in `photos/`, under a name made of its own
+ * contents: the same picture always lands in the same file, and a file never changes.
+ * A card holds only that name, so a card stays small enough to leave with a closing tab.
+ */
+export const PHOTOS = "photos";
+export const okPhoto = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{16}\.jpg$/.test(v);
 
 /** The file a person's card is kept in. */
 export const cardName = (id: string): string => id + ".json";
@@ -57,6 +65,7 @@ export interface Card {
   siblings: string[];
   fx?: number;
   fy?: number;
+  photo?: string;
 }
 
 /** `_view.json`. */
@@ -247,6 +256,7 @@ export function treeToCards(tree: any): CardSet {
       doc.fx = Math.round(p.fx * 100) / 100;
       doc.fy = Math.round(p.fy * 100) / 100;
     }
+    if (okPhoto(p.photo)) doc.photo = p.photo;
     // the fields the app does not know go back where they came from, after its own
     cards.push([cardName(id), JSON.stringify({ ...doc, ...extraOf(p.extra) }, null, 2) + "\n"]);
   }

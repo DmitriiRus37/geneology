@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fromFolder } from "../../tools/metrics.ts";
 import { synthTree } from "../testing/trees.ts";
-import { cardIdOf, cardsToTree, treeToCards, VIEW, type CardSet } from "./cards.ts";
+import { cardIdOf, cardsToTree, okPhoto, treeToCards, VIEW, type CardSet } from "./cards.ts";
 import { initialAppState, reducer } from "./store.ts";
 import { normalize } from "./tree.ts";
 import type { TreeState } from "./types.ts";
@@ -203,4 +203,29 @@ test("treeToCards drops ids named after Object.prototype members, and every link
   const p1 = JSON.parse(set.cards[0][1]);
   assert.deepEqual([p1.parents, p1.spouses, p1.siblings], [[], [], []]);
   assert.deepEqual(JSON.parse(set.view).hidden, ["p1"]);
+});
+
+test("a photo name survives save -> read -> normalize; anything else in its place is dropped", () => {
+  const s = normalize({
+    people: {
+      p1: { id: "p1", name: "A", n: 1, photo: "0123456789abcdef.jpg" },
+      p2: { id: "p2", name: "B", n: 2, photo: "../p1.json" },
+      p3: { id: "p3", name: "C", n: 3, photo: "" },
+    },
+  });
+  assert.equal(s.people.p1.photo, "0123456789abcdef.jpg");
+  assert.equal(s.people.p2.photo, undefined);
+  assert.equal(s.people.p2.extra, undefined, "a bad photo is not kept as an unknown field either");
+  const cards = Object.fromEntries(treeToCards(s).cards.map(([n, text]) => [n, JSON.parse(text)]));
+  assert.equal(cards["p1.json"].photo, "0123456789abcdef.jpg");
+  assert.equal("photo" in cards["p2.json"], false);
+  assert.equal("photo" in cards["p3.json"], false, "a removed photo leaves the card");
+  assert.equal(roundTrip(s).people.p1.photo, "0123456789abcdef.jpg");
+});
+
+test("okPhoto takes only the names the server gives", () => {
+  for (const ok of ["0123456789abcdef.jpg", "ffffffffffffffff.jpg"]) assert.equal(okPhoto(ok), true, ok);
+  for (const bad of ["", "0123456789ABCDEF.jpg", "0123456789abcdef.png", "0123456789abcde.jpg", "/0123456789abcdef.jpg", 7, null]) {
+    assert.equal(okPhoto(bad), false, String(bad));
+  }
 });

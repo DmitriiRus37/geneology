@@ -162,14 +162,14 @@ export function postInTwoParts(base: string, path: string, body: Buffer, at: num
 /* ----------------------------------- zip ---------------------------------- */
 
 /** A zip with stored, uncompressed entries — enough for the server to read. */
-export function zip(files: Record<string, string>): Buffer {
+export function zip(files: Record<string, string | Buffer>): Buffer {
   const parts: Buffer[] = [];
   const index: Buffer[] = [];
   let at = 0;
   const names = Object.keys(files);
   for (const name of names) {
     const n = Buffer.from(name, "utf8");
-    const body = Buffer.from(files[name], "utf8");
+    const body = Buffer.from(files[name]);
     const crc = crc32(body);
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
@@ -205,10 +205,15 @@ export function zip(files: Record<string, string>): Buffer {
 
 /** Read a zip the server sent: name -> text, stored or deflated entries. */
 export function unzip(buf: Buffer): Record<string, string> {
+  return Object.fromEntries(Object.entries(unzipBytes(buf)).map(([name, bytes]) => [name, bytes.toString("utf8")]));
+}
+
+/** The same, name -> bytes: what photos are read with. */
+export function unzipBytes(buf: Buffer): Record<string, Buffer> {
   let end = buf.length - 22;
   while (end >= 0 && buf.readUInt32LE(end) !== 0x06054b50) end--;
   if (end < 0) throw new Error("not a zip archive");
-  const out: Record<string, string> = {};
+  const out: Record<string, Buffer> = {};
   let p = buf.readUInt32LE(end + 16);
   for (let i = buf.readUInt16LE(end + 10); i > 0; i--) {
     const method = buf.readUInt16LE(p + 10);
@@ -219,9 +224,19 @@ export function unzip(buf: Buffer): Record<string, string> {
     p += 46 + nameLen + buf.readUInt16LE(p + 30) + buf.readUInt16LE(p + 32);
     const from = localAt + 30 + buf.readUInt16LE(localAt + 26) + buf.readUInt16LE(localAt + 28);
     const body = buf.subarray(from, from + packed);
-    out[name] = (method === 8 ? inflateRawSync(body) : body).toString("utf8");
+    out[name] = method === 8 ? inflateRawSync(body) : Buffer.from(body);
   }
   return out;
+}
+
+/* --------------------------------- photos --------------------------------- */
+
+/** Bytes that pass for a JPEG: the server checks only how a JPEG starts. */
+export const jpeg = (tail: string): Buffer => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(tail)]);
+
+export async function postPhoto(base: string, bytes: Buffer, headers: Record<string, string> = {}) {
+  const r = await fetch(base + "/api/photo", { method: "POST", headers, body: new Uint8Array(bytes) });
+  return { status: r.status, body: await r.json() };
 }
 
 /* ---------------------------------- cards --------------------------------- */

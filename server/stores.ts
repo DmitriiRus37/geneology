@@ -1,10 +1,13 @@
 /**
  * Where the cards lie: a folder on disk or a map in memory, behind one interface.
- * A store knows files and their fingerprint, nothing about people.
+ * A store knows files and their fingerprint, nothing about people. Photos lie apart,
+ * in `photos/`: they are named after their contents and never change, so they take
+ * no part in the fingerprint.
  */
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { PHOTOS } from "../src/model/cards.ts";
 
 interface Common {
   /** the folder, or "server memory" */
@@ -17,6 +20,10 @@ interface Common {
   remove(name: string): Promise<void>;
   /** The fingerprint of everything in the store: "empty" when there is nothing. */
   rev(): Promise<string>;
+  /** a photo's bytes, or null when there is no such photo */
+  photo(name: string): Promise<Buffer | null>;
+  /** a photo is named after its contents: one already there is left as it is */
+  putPhoto(name: string, bytes: Buffer): Promise<void>;
 }
 
 export interface DiskStore extends Common {
@@ -25,16 +32,16 @@ export interface DiskStore extends Common {
 
 export interface MemStore extends Common {
   kind: "memory";
-  /** Everything at once: an uploaded archive replaces the whole tree. */
-  replace(files: Map<string, string>): void;
+  /** Everything at once: an uploaded archive replaces the whole tree, photos included. */
+  replace(files: Map<string, string>, photos: Map<string, Buffer>): void;
 }
 
 export type Store = DiskStore | MemStore;
 
 /** We write through a temporary file: an interrupted write will not spoil the existing one. */
-async function writeAtomic(path: string, text: string): Promise<void> {
+async function writeAtomic(path: string, text: string | Buffer): Promise<void> {
   const tmp = path + ".tmp";
-  await writeFile(tmp, text, "utf8");
+  await writeFile(tmp, text);
   await rename(tmp, path);
 }
 
@@ -80,6 +87,19 @@ export function diskStore(dir: string): DiskStore {
       }
       return createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 16);
     },
+    async photo(name) {
+      try {
+        return await readFile(join(dir, PHOTOS, name));
+      } catch {
+        return null;
+      }
+    },
+    async putPhoto(name, bytes) {
+      const path = join(dir, PHOTOS, name);
+      if (await stat(path).then(() => true, () => false)) return;
+      await mkdir(join(dir, PHOTOS), { recursive: true });
+      await writeAtomic(path, bytes);
+    },
   };
   return store;
 }
@@ -91,6 +111,7 @@ export function diskStore(dir: string): DiskStore {
  */
 export function memStore(): MemStore {
   let files = new Map<string, string>();
+  let photos = new Map<string, Buffer>();
   return {
     kind: "memory",
     where: "server memory",
@@ -114,8 +135,15 @@ export function memStore(): MemStore {
       for (const n of [...files.keys()].sort()) sum.update(n).update(files.get(n) as string);
       return sum.digest("hex").slice(0, 16);
     },
-    replace(next) {
+    async photo(name) {
+      return photos.get(name) ?? null;
+    },
+    async putPhoto(name, bytes) {
+      if (!photos.has(name)) photos.set(name, bytes);
+    },
+    replace(next, nextPhotos) {
       files = next;
+      photos = nextPhotos;
     },
   };
 }
