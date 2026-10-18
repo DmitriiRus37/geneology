@@ -36,6 +36,10 @@ export interface Auth {
   roleOfCreds(name: unknown, pass: unknown): Role | null;
   /** Who is asking: "admin", "user", or null for a stranger. */
   roleOf(req: IncomingMessage): Role | null;
+  /** The account of the session cookie, or null. */
+  ticketRole(req: IncomingMessage): Role | null;
+  /** The account of the Basic credentials: null when they are wrong, undefined when there are none. */
+  basicRole(req: IncomingMessage): Role | null | undefined;
 }
 
 export function createAuth({ user, pass, adminUser, adminPass }: Accounts): Auth {
@@ -65,27 +69,27 @@ export function createAuth({ user, pass, adminUser, adminPass }: Accounts): Auth
    * With no password configured at all everyone is an admin: that is a server on
    * your own machine, where there is nobody to keep out.
    */
-  function roleOf(req: IncomingMessage): Role | null {
-    if (!guarded) return "admin";
-
+  function ticketRole(req: IncomingMessage): Role | null {
     const got = ticketOf(req);
     if (got.length === ticket.admin.length) {
       if (same(got, ticket.admin)) return "admin";
       if (same(got, ticket.user)) return "user";
     }
-
-    const head = req.headers.authorization ?? "";
-    if (head.startsWith("Basic ")) {
-      try {
-        const pair = Buffer.from(head.slice(6), "base64").toString("utf8");
-        const at = pair.indexOf(":");
-        if (at > -1) return roleOfCreds(pair.slice(0, at), pair.slice(at + 1));
-      } catch {
-        /* not base64 — a stranger */
-      }
-    }
     return null;
   }
 
-  return { guarded, hasAdmin, ticket, roleOfCreds, roleOf };
+  function basicRole(req: IncomingMessage): Role | null | undefined {
+    const head = req.headers.authorization ?? "";
+    if (!head.startsWith("Basic ")) return undefined;
+    const pair = Buffer.from(head.slice(6), "base64").toString("utf8");
+    const at = pair.indexOf(":");
+    return at > -1 ? roleOfCreds(pair.slice(0, at), pair.slice(at + 1)) : null;
+  }
+
+  function roleOf(req: IncomingMessage): Role | null {
+    if (!guarded) return "admin";
+    return ticketRole(req) ?? basicRole(req) ?? null;
+  }
+
+  return { guarded, hasAdmin, ticket, roleOfCreds, roleOf, ticketRole, basicRole };
 }

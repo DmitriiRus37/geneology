@@ -30,6 +30,10 @@ export interface Config {
    * then the header is whatever the client chose to write into it.
    */
   trustProxy: boolean;
+  /** wrong passwords from one address before it is locked out */
+  lockTries: number;
+  /** the window those are counted in, and how long the lockout lasts, in ms */
+  lockMs: number;
 }
 
 /** `root` is the repository: persons/ and dist/ are looked for there. */
@@ -62,5 +66,7 @@ export function readConfig(argv: string[], env: Record<string, string | undefine
     adminPass: env.GENEALOGY_ADMIN_PASS ?? "",
     attemptsMax: Number(env.GENEALOGY_ATTEMPTS ?? 10000),
     trustProxy: env.GENEALOGY_TRUST_PROXY === "1",
+    lockTries: Number(env.GENEALOGY_LOCK_TRIES ?? 5),
+    lockMs: Number(env.GENEALOGY_LOCK_MINUTES ?? 15) * 60e3,
   };
 }

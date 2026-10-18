@@ -40,6 +40,7 @@ import { readConfig } from "./config.ts";
 import { createGeo } from "./geo.ts";
 import { createHandler } from "./routes.ts";
 import { diskStore, memStore } from "./stores.ts";
+import { createThrottle } from "./throttle.ts";
 import { createTree } from "./tree.ts";
 
 const config = readConfig(process.argv, process.env, join(import.meta.dirname, ".."));
@@ -56,6 +57,8 @@ const server = createServer(
   createHandler({
     auth,
     attempts,
+    throttle: createThrottle({ tries: config.lockTries, window: config.lockMs, lock: config.lockMs }),
+    trustProxy: config.trustProxy,
     geo: createGeo(),
     tree: createTree(store),
     accessLog,

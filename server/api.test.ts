@@ -678,3 +678,49 @@ describe("an archive into an empty folder", () => {
     assert.deepEqual(Object.keys((await getTree(srv.base)).body.tree.people), ["p1"]);
   });
 });
+
+describe("password guessing is locked out per address", () => {
+  const USER: [string, string] = ["fam", "secret"];
+  let srv: Running;
+  before(async () => {
+    srv = await startServer({ user: USER, env: { GENEALOGY_LOCK_TRIES: "3", GENEALOGY_TRUST_PROXY: "1" } });
+  });
+  after(() => srv.stop());
+
+  const from = (ip: string) => ({ "x-forwarded-for": ip });
+  const form = (ip: string, pass: string) =>
+    fetch(srv.base + "/login", { method: "POST", headers: from(ip), body: new URLSearchParams({ u: USER[0], p: pass }), redirect: "manual" });
+
+  test("after the set number of wrong passwords even the right one gets 429, from that address only", async () => {
+    const cookie = await login(srv.base, ...USER, from("192.0.2.1"));
+    for (let i = 0; i < 3; i++) assert.equal((await form("192.0.2.1", "wrong")).status, 401);
+    const locked = await form("192.0.2.1", USER[1]);
+    assert.equal(locked.status, 429);
+    assert.match(locked.headers.get("retry-after") ?? "", /^\d+$/);
+    assert.match(await locked.text(), /Too many wrong passwords\. Try again in 15 minutes\./);
+    // Basic from the same address is locked too, right password or not
+    assert.equal((await fetch(srv.base + "/api/tree", { headers: { ...from("192.0.2.1"), ...basic(...USER) } })).status, 429);
+    // someone else is not
+    assert.equal((await form("192.0.2.2", USER[1])).status, 303);
+    // and a session already open stays open
+    assert.equal((await getTree(srv.base, { ...from("192.0.2.1"), cookie })).status, 200);
+  });
+
+  test("wrong Basic credentials count, and a right password before the limit clears them", async () => {
+    const tree = (ip: string, pass: string) => fetch(srv.base + "/api/tree", { headers: { ...from(ip), ...basic(USER[0], pass) } });
+    for (let round = 0; round < 3; round++) {
+      assert.equal((await tree("192.0.2.3", "wrong")).status, 401);
+      assert.equal((await tree("192.0.2.3", "wrong")).status, 401);
+      assert.equal((await tree("192.0.2.3", USER[1])).status, 200);
+    }
+    for (let i = 0; i < 3; i++) await tree("192.0.2.4", "wrong");
+    assert.equal((await tree("192.0.2.4", USER[1])).status, 429);
+  });
+
+  test("guesses fired at once are each counted", async () => {
+    const all = await Promise.all(Array.from({ length: 8 }, () => form("192.0.2.5", "wrong")));
+    const codes = all.map((r) => r.status).sort();
+    assert.equal(codes.filter((c) => c === 401).length, 3, codes.join(","));
+    assert.equal(codes.filter((c) => c === 429).length, 5, codes.join(","));
+  });
+});

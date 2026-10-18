@@ -201,6 +201,12 @@ page at `/login` and gets a session cookie that lasts until the server restarts;
 drops it. Tools keep using HTTP Basic, so `curl -u`, `make backup` and `make smoke` work
 unchanged.
 
+Password guessing is locked out per address: after 5 wrong passwords within 15 minutes, by
+the form or by HTTP Basic, the address gets `429 Too Many Requests` for 15 minutes, and its
+passwords, the right one included, are not even checked until then. Requests fired at once
+are counted one by one. A session already open stays open. `GENEALOGY_LOCK_TRIES` and
+`GENEALOGY_LOCK_MINUTES` change the numbers.
+
 The tree survives a deploy, but the server's disk is still a single copy. Take one off now
 and then, and put it back into an empty server, the first time or after losing the data:
 
@@ -252,7 +258,7 @@ another.
 
 ```
 server.mjs    starts the local server: serves the app, reads and writes persons/. No dependencies
-server/       the server itself, TypeScript that Node runs as it is
+server/       the server itself, TypeScript that Node runs as it is (throttle.ts: the password lockout)
   main.ts       settings in, parts built, port opened
   routes.ts     every route in the order it is tried
   tree.ts       the tree over a store, the write queue and the version check
@@ -597,6 +603,12 @@ GENEALOGY_USER=fam GENEALOGY_PASS='<пароль к древу>' make deploy
 ходят по-прежнему через HTTP Basic, так что `curl -u`, `make backup` и `make smoke`
 работают как работали.
 
+Подбор пароля упирается в блокировку по адресу: после 5 неверных паролей за 15 минут — через
+форму или через HTTP Basic — адрес на 15 минут получает `429 Too Many Requests`, и до тех пор
+его пароли, даже верный, вообще не проверяются. Запросы, посланные разом, считаются каждый.
+Уже открытая сессия остаётся открытой. Числа меняют `GENEALOGY_LOCK_TRIES` и
+`GENEALOGY_LOCK_MINUTES`.
+
 Выкладку древо переживает, но диск сервера — всё равно единственная копия. Время от времени
 забирайте её и возвращайте в пустой сервер — в первый раз или после потери данных:
 
@@ -647,7 +659,7 @@ node tools/metrics.ts /путь/к/копии   # то же на копии да
 
 ```
 server.mjs    запускает локальный сервер: отдаёт приложение, читает и пишет persons/. Без зависимостей
-server/       сам сервер, TypeScript, который Node запускает как есть
+server/       сам сервер, TypeScript, который Node запускает как есть (throttle.ts: блокировка подбора пароля)
   main.ts       настройки, сборка частей, открытие порта
   routes.ts     все маршруты в том порядке, в каком они проверяются
   tree.ts       дерево поверх хранилища, очередь записи и проверка версии

@@ -104,8 +104,11 @@ export const notForYou = (): string =>
   '<p class="sub">This page belongs to the administrator. ' +
   '<a href="/">Back to the tree</a> · <a href="/logout">Log out as someone else</a></p></html>';
 
-/** The login page. `bad` marks a second attempt after a wrong password. */
-export const loginPage = (bad: boolean): string =>
+/**
+ * The login page. `bad` follows a wrong password; `locked` follows too many of them,
+ * with the minutes left.
+ */
+export const loginPage = (note: { bad: true } | { locked: number } | null = null): string =>
   '<!doctype html><html lang="en">' + HEAD +
   "<title>Genealogy</title><style>" +
   "*{-webkit-tap-highlight-color:transparent}" +
@@ -128,5 +131,8 @@ export const loginPage = (bad: boolean): string =>
   "<label for=u>Login</label><input id=u name=u autocomplete=username>" +
   "<label for=p>Password</label><input id=p name=p type=password autocomplete=current-password>" +
   "<button type=submit>Enter</button>" +
-  (bad ? '<p class="bad">Wrong login or password.</p>' : "") +
+  (note && "bad" in note ? '<p class="bad">Wrong login or password.</p>' : "") +
+  (note && "locked" in note
+    ? '<p class="bad">Too many wrong passwords. Try again in ' + note.locked + (note.locked === 1 ? " minute" : " minutes") + ".</p>"
+    : "") +
   "</form></html>";

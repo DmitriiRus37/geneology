@@ -199,6 +199,8 @@ Common causes:
   version, or `data/` was lost. Step 9.
 - **The container cannot write the tree** (`EACCES` in the logs) — `data/` on the
   server is not owned by uid 1000; `make deploy` chowns it, re-run it.
+- **429 for the backup or the smoke check** — this address sent 5 wrong passwords
+  in 15 minutes and is locked out for 15 minutes. Wait, and fix the password.
 - **`docker load` fails or the image is missing** — the tarball did not arrive in
   full; check the disk on the server and re-run `make deploy`.
 - **Disk full** — old images in `/var/lib/docker/overlay2`. Prune them, step 8.

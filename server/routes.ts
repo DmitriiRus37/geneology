@@ -9,9 +9,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { cardIdOf, okPhoto } from "../src/model/cards.ts";
 import type { AccessLog } from "./accesslog.ts";
-import type { Attempts } from "./attempts.ts";
+import { ipOf, type Attempts } from "./attempts.ts";
 import { COOKIE, type Auth, type Role } from "./auth.ts";
 import type { Geo } from "./geo.ts";
+import type { Throttle } from "./throttle.ts";
 import { json, MIME, page, readBody, readBuffer, redirect } from "./http.ts";
 import { ADMIN_ROWS, adminPage, loginPage, notForYou } from "./pages.ts";
 import { cardsOf, isJpeg, photosOf, type Tree } from "./tree.ts";
@@ -20,6 +21,9 @@ import { zipRead, zipWrite } from "./zip.ts";
 export interface Services {
   auth: Auth;
   attempts: Attempts;
+  throttle: Throttle;
+  /** read the client's address from X-Forwarded-For (see `ipOf`) */
+  trustProxy: boolean;
   geo: Geo;
   tree: Tree;
   accessLog: AccessLog;
@@ -56,11 +60,14 @@ const now = () => new Date().toISOString().slice(11, 19);
 
 const home = (r: Role) => (r === "admin" ? "/admin" : "/");
 
+/** Minutes, rounded up, for "try again in". */
+const minutes = (ms: number) => Math.max(1, Math.ceil(ms / 60e3));
+
 /** The app shrinks a photo before sending it: a few hundred kilobytes at most. */
 const MAX_PHOTO = 4e6;
 
 export function createHandler(s: Services): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
-  const { auth, attempts, geo, tree } = s;
+  const { auth, attempts, throttle, geo, tree } = s;
 
   const open: ExactRoute[] = [
     // The only thing open without a password: "are you alive". No people and no
@@ -72,7 +79,7 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
     {
       url: "/login",
       method: "GET",
-      run: ({ res, role }) => (role ? redirect(res, home(role)) : page(res, 200, loginPage(false))),
+      run: ({ res, role }) => (role ? redirect(res, home(role)) : page(res, 200, loginPage())),
     },
     {
       url: "/login",
@@ -80,8 +87,20 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
       async run({ req, res }) {
         const form = new URLSearchParams(await readBody(req));
         const name = form.get("u") ?? "";
+        const ip = ipOf(req, s.trustProxy);
+        // locked out: the password is not even looked at, so a guesser learns nothing
+        const wait = auth.guarded ? throttle.wait(ip) : 0;
+        if (wait) {
+          attempts.record(req, name, null);
+          res.setHeader("retry-after", String(Math.ceil(wait / 1000)));
+          return page(res, 429, loginPage({ locked: minutes(wait) }));
+        }
         const got = auth.guarded ? auth.roleOfCreds(name, form.get("p") ?? "") : "admin";
         attempts.record(req, name, got);
+        if (auth.guarded) {
+          if (got) throttle.pass(ip);
+          else throttle.fail(ip);
+        }
         if (got) {
           res.writeHead(303, {
             location: home(got),
@@ -91,7 +110,7 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
           return res.end();
         }
         await new Promise((r) => setTimeout(r, 400)); // guessing should be slow
-        return page(res, 401, loginPage(true));
+        return page(res, 401, loginPage({ bad: true }));
       },
     },
     {
@@ -295,6 +314,22 @@ export function createHandler(s: Services): (req: IncomingMessage, res: ServerRe
       const ctx: Ctx = { req, res, role: auth.roleOf(req) };
       const free = exact(open, req);
       if (free) return void (await free.run(ctx));
+
+      // Basic credentials (curl, the backup, the smoke check) count against the
+      // address the same way the form does; a valid session cookie is not a guess
+      if (auth.guarded && !auth.ticketRole(req)) {
+        const basic = auth.basicRole(req);
+        if (basic !== undefined) {
+          const ip = ipOf(req, s.trustProxy);
+          const wait = throttle.wait(ip);
+          if (wait) {
+            res.writeHead(429, { "content-type": "text/plain; charset=utf-8", "retry-after": String(Math.ceil(wait / 1000)) });
+            return void res.end("Too many wrong passwords. Try again in " + minutes(wait) + " min\n");
+          }
+          if (basic) throttle.pass(ip);
+          else throttle.fail(ip);
+        }
+      }
       if (!ctx.role) return void refuse(ctx);
       const own = exact(admin, req);
       if (own) return void (await own.run(ctx));

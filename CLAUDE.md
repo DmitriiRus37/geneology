@@ -29,7 +29,10 @@ field is filled in by strangers, so it is HTML-escaped on the page and JSON does
 The page also resolves addresses to a country and city through `GEO_SOURCES` (ipinfo.io,
 then get.geojs.io, then ipwho.is — first to answer wins), cached in memory, only when an
 admin opens the page and only for the rows shown;
-`--host`/`HOST` sets the bind address, still `127.0.0.1` by default. `/api/health` is the
+`--host`/`HOST` sets the bind address, still `127.0.0.1` by default. Wrong passwords, by the
+form or by Basic, are counted per address in `server/throttle.ts`: `GENEALOGY_LOCK_TRIES` (5)
+within `GENEALOGY_LOCK_MINUTES` (15) lock the address out with 429 for as long, and the
+password is not checked while locked; a valid session cookie is never counted. `/api/health` is the
 only route outside the guard. `LOG_DIR` turns on the request log (one line per request,
 no headers and no bodies); it rotates itself at `LOG_MAX` (10 MB) keeping `LOG_KEEP` (3)
 gzipped files. Without `LOG_DIR` nothing is written, so local runs stay quiet. Both logs
