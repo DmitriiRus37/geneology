@@ -13,7 +13,7 @@ gzipped tarball; the server only runs `docker load` + `docker compose up`. The
 server compiles nothing: there is no npm, no node_modules and no `src/` on it.
 
 `docker-compose-prod.yml` has no `build:` section — the `app` service just runs the
-prebuilt `genealogy_app:latest` image. There is no database.
+prebuilt `genealogy_app:3.0.0` image. There is no database.
 
 **The tree lives on the server's disk**, in `/root/genealogy/data` (a card per
 person, `photos/` beside them), bind-mounted into the container as `/app/data`. A

@@ -9,7 +9,7 @@
 # takes a copy off the server.
 services:
   app:
-    image: genealogy_app:latest
+    image: genealogy_app:3.0.0   # the tag `make build_docker` gives it (IMAGE in the Makefile)
     container_name: genealogy_app
     restart: always
     environment:

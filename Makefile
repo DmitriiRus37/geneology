@@ -23,7 +23,8 @@
 -include .env
 export PROD_HOST SSH_USER SSHPASS GENEALOGY_USER GENEALOGY_PASS GENEALOGY_ADMIN_USER GENEALOGY_ADMIN_PASS
 
-IMAGE         := genealogy_app:latest
+# keep the tag in step with "version" in package.json and docker-compose-prod.yml
+IMAGE         := genealogy_app:3.0.0
 PLATFORM      := linux/amd64            # the remote machine's architecture
 REMOTE_DIR    := /root/genealogy
 SSH_USER      ?= root

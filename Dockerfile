@@ -11,7 +11,7 @@
 # empty folder takes the first tree as a zip archive ("Upload archive").
 
 # ---- build: the whole page in one file ----
-FROM --platform=$BUILDPLATFORM node:26-alpine AS build
+FROM --platform=$BUILDPLATFORM node:26.12.1-alpine3.24 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -24,7 +24,7 @@ RUN echo '{}' > src/data/family.json
 RUN npm run build
 
 # ---- run ----
-FROM node:26-alpine
+FROM node:26.12.1-alpine3.24
 ENV NODE_ENV=production \
     GENEALOGY_STORE=disk \
     GENEALOGY_DIR=/app/data \
