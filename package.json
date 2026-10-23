@@ -13,18 +13,21 @@
     "serve": "node server.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p server",
-    "test": "node --test \"src/**/*.test.ts\" \"server/**/*.test.ts\"",
-    "test:update": "node --test --test-update-snapshots \"src/**/*.test.ts\" \"server/**/*.test.ts\""
+    "test": "node --import ./src/testing/tsx.ts --enable-source-maps --test --experimental-test-coverage --test-coverage-include-all --test-coverage-include=\"server.mjs\" --test-coverage-include=\"server/**\" --test-coverage-include=\"src/**\" --test-coverage-include=\"tools/**\" --test-coverage-exclude=\"**/*.test.ts\" --test-coverage-exclude=\"server/testing.ts\" --test-coverage-exclude=\"src/testing/**\" --test-coverage-exclude=\"src/main.tsx\" --test-coverage-lines=90 --test-coverage-branches=90 --test-coverage-functions=90 \"src/**/*.test.ts\" \"server/**/*.test.ts\" \"tools/**/*.test.ts\"",
+    "test:update": "node --import ./src/testing/tsx.ts --enable-source-maps --test --test-update-snapshots \"src/**/*.test.ts\" \"server/**/*.test.ts\" \"tools/**/*.test.ts\""
   },
   "dependencies": {
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^21.0.4",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "happy-dom": "^21.0.4",
+    "rolldown": "^1.2.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vite-plugin-singlefile": "^2.3.4"

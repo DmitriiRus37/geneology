@@ -74,7 +74,10 @@ export async function startServer(opts: ServerOptions = {}): Promise<Running> {
 
   const port = await freePort();
   const args = ["--port", String(port), "--host", "127.0.0.1", "--store", opts.store ?? "disk", "--dir", dir];
-  const child = spawn(process.execPath, [join(ROOT, "server.mjs"), ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
+  // SIGTERM ends the server through process.exit, so that a coverage run
+  // (NODE_V8_COVERAGE, inherited) gets the server's coverage written out too
+  const exitOnTerm = "data:text/javascript,process.once('SIGTERM',()=>process.exit(0))";
+  const child = spawn(process.execPath, ["--import", exitOnTerm, join(ROOT, "server.mjs"), ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   child.stdout.on("data", (c) => (out += c));
   child.stderr.on("data", (c) => (out += c));

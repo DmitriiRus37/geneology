@@ -80,7 +80,7 @@ npm start            # build + serve at http://127.0.0.1:5179
 npm run serve        # serve the existing build
 npm run dev          # Vite with hot reload on 5178, /api proxied to 5179 (run `serve` too)
 npm run build        # dist/genealogy.html, a single self-contained page
-npm test             # node --test "src/**/*.test.ts" "server/**/*.test.ts" (keep the quotes)
+npm test             # node --test over src/, server/ and tools/ with coverage; fails below 90% (lines, branches, functions)
 npm run test:update  # the same, rewriting the snapshots: only after a deliberate change
 npm run typecheck    # tsc for the app, then for server/ (its own tsconfig, no DOM types)
 node tools/metrics.ts /path/to/data-copy   # layout quality metrics; `seed` = src/data/family.json
@@ -173,9 +173,18 @@ rewrite cannot change it unnoticed. Fixing the bug means turning its test around
 - Test at boundaries that do not move: the HTTP API (`server/testing.ts` starts a real
   `node server.mjs` on a free port in a temp folder), the reducer, the layout's output, the
   rendered markup, the sync engine and the gesture automaton. Do not pin internal helpers.
-- Node 26 runs `.ts` but not `.tsx`: whatever a Node test imports must live in a `.ts`
-  file. Markup is rendered through Vite's SSR loader in `src/ui/render.test.ts`.
+- Node 26 runs `.ts` but not `.tsx`: the test command loads `src/testing/tsx.ts`, a module
+  hook that compiles `.tsx` with Rolldown's Oxc transform (inline source maps, so coverage
+  is reported on the `.tsx` lines). Markup snapshots are in `src/ui/render.test.ts`.
   `src/purity.test.ts` refuses browser globals in `model/` and `layout/`.
+- The interface is played in happy-dom through `src/testing/dom.ts` (import it before
+  React): `src/ui/app.test.ts` and `src/ui/phone.test.ts` run the whole `App` against a real
+  test server, `src/io/export.test.ts` the files the browser hands out (a fake canvas).
+  happy-dom computes no layout: `setRect` gives elements their boxes, and its
+  ResizeObserver, media query lists and `<a download>` are patched there.
+- Coverage is Node's own (`--experimental-test-coverage --test-coverage-include-all`);
+  the server is measured too, since `startServer` lets it exit on SIGTERM. Excluded:
+  the tests, `src/testing/`, `server/testing.ts` and `src/main.tsx` (the bootstrap).
 - Engines with time in them take their timers from outside and are tested with
   `t.mock.timers`: `src/io/sync.test.ts` puts a fake server behind `fetch` and a harness
   that commits the way React renders do; `src/ui/board/gestures.test.ts` plays fingers and

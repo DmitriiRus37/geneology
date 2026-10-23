@@ -1,11 +1,11 @@
 /**
  * Snapshots of what the interface draws, rendered to plain HTML in Node. Node cannot
- * read JSX by itself, so the components come through Vite's server-side module
- * loader — Vite is here for the build anyway, nothing new is installed.
+ * read JSX by itself; the test command loads `src/testing/tsx.ts`, which compiles the
+ * components with the same Oxc transform Vite builds the app with.
  *
  * A static render runs no effects: this pins the markup — which parts are drawn, in
- * which order, with which classes and texts — not the behaviour. Gestures, the sheet
- * and saving are checked by hand in a browser.
+ * which order, with which classes and texts — not the behaviour. The behaviour is
+ * played in a DOM in `src/ui/app.test.ts`.
  *
  * The trees are synthetic: no real names end up in the snapshots.
  */
@@ -13,7 +13,6 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createElement as h, type ComponentType, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createServer, type ViteDevServer } from "vite";
 import type { Where } from "../io/sync.ts";
 import { t as translate, type Lang } from "../i18n.ts";
 import { layout } from "../layout/layout.ts";
@@ -23,7 +22,6 @@ import { nodeCards } from "../testing/cards.ts";
 
 type Components = Record<string, ComponentType<any>>;
 
-let vite: ViteDevServer;
 let ui: Components = {};
 /** what the screen answers to the phone media query while a test renders */
 let narrow = false;
@@ -32,19 +30,12 @@ before(async () => {
   Object.assign(globalThis, {
     window: { matchMedia: () => ({ matches: narrow, addEventListener() {}, removeEventListener() {} }) },
   });
-  vite = await createServer({
-    root: new URL("../..", import.meta.url).pathname,
-    logLevel: "silent",
-    server: { middlewareMode: true, hmr: false },
-    appType: "custom",
-  });
   for (const file of ["Sidebar.tsx", "Toolbar.tsx", "AddPopover.tsx", "EdgeMenu.tsx", "Board.tsx", "ctx.ts"]) {
-    Object.assign(ui, await vite.ssrLoadModule("/src/ui/" + file));
+    Object.assign(ui, await import("./" + file));
   }
 });
 
-after(async () => {
-  await vite?.close();
+after(() => {
   Reflect.deleteProperty(globalThis, "window");
 });
 

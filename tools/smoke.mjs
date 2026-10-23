@@ -49,8 +49,10 @@ const html = await page.text();
 check(page.status === 200 && html.includes("<html"), "the app page is served", html.length + " bytes");
 
 /* --- does the tree read --- */
-const tree = await (await get("/api/tree")).json();
-check(tree.ok === true, "/api/tree answers", "store=" + tree.store);
+const treeRes = await get("/api/tree");
+// a refusal (a wrong password) is text, not JSON: it fails the check, not the script
+const tree = await treeRes.json().catch(() => ({}));
+check(tree.ok === true, "/api/tree answers", "status " + treeRes.status + ", store=" + tree.store);
 const people = Object.keys(tree.tree?.people ?? {}).length;
 console.log("  --  people in the tree: " + people + ", store: " + tree.store);
 

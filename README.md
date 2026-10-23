@@ -243,15 +243,19 @@ npm run dev         # terminal 2: Vite with hot reload on 5178, /api is proxied 
 
 ```bash
 npm test                        # all tests (Node 24+): dates, names, layout, row order, bus stacking, tree actions, dictionary,
-                                #   the server's HTTP API, layout snapshots, random trees, interface markup
+                                #   the server's HTTP API, layout snapshots, random trees, interface markup,
+                                #   the whole app in a DOM against a test server, the tools; with coverage,
+                                #   and it fails below 90% of lines, branches or functions
 npm run test:update             # after a deliberate change: rewrite the snapshots, then read their diff
 npm run typecheck
 node tools/metrics.ts           # layout quality metrics on persons/
 node tools/metrics.ts /path/to/copy   # the same on a copy of the data
 ```
 
-Tests run directly in Node, which strips the types from `.ts` itself; no browser or DOM
-shims are needed because all logic lives in plain modules. Text width measurement in Node
+Tests run directly in Node, which strips the types from `.ts` itself; `.tsx` components are
+compiled by a small module hook (`src/testing/tsx.ts`, the Oxc transform Vite builds with).
+The logic is tested in plain modules; the interface itself is played in happy-dom
+(`src/testing/dom.ts`), against a real test server. Text width measurement in Node
 falls back to a character-count estimate, see `src/layout/measure.ts`. Run the metrics
 before and after any change to the layout: nearly every improvement of one number costs
 another.
@@ -647,15 +651,19 @@ npm run dev         # в другом: vite с горячей перезагру
 
 ```bash
 npm test                        # все тесты (Node 24+): даты, имена, раскладка, порядок в рядах, укладка шин, действия над древом, словарь,
-                                #   HTTP-API сервера, снимки раскладки, случайные деревья, разметка интерфейса
+                                #   HTTP-API сервера, снимки раскладки, случайные деревья, разметка интерфейса,
+                                #   всё приложение в DOM против тестового сервера, утилиты; с покрытием,
+                                #   и падает, если покрыто меньше 90% строк, ветвлений или функций
 npm run test:update             # после намеренного изменения: переписать снимки и прочитать их дифф
 npm run typecheck
 node tools/metrics.ts           # метрики качества раскладки на persons/
 node tools/metrics.ts /путь/к/копии   # то же на копии данных
 ```
 
-Тесты гоняются прямо в Node (он сам снимает типы с `.ts`), браузер и заглушки DOM не
-нужны: вся логика лежит в обычных модулях. Замер ширины текста в Node падает на прикидку по
+Тесты гоняются прямо в Node (он сам снимает типы с `.ts`); компоненты `.tsx` компилирует
+маленький хук модулей (`src/testing/tsx.ts`, тот же Oxc, которым собирает Vite). Логика
+проверяется в обычных модулях, а сам интерфейс проигрывается в happy-dom
+(`src/testing/dom.ts`) против настоящего тестового сервера. Замер ширины текста в Node падает на прикидку по
 числу символов — см. `src/layout/measure.ts`. Метрики гоняйте до и после любой правки
 раскладки: почти любое улучшение одного числа стоит другого.
 
